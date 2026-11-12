@@ -10,7 +10,7 @@
 // Popups of this mod: props.sortMenu, props.snoozeMenu ({ terminal, tab }).
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { agents, terminals, panes, focused, spaces, machines, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, hc, exec, notify } from "herdr";
+import { agents, terminals, panes, focused, spaces, machines, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, hc, exec, notify, nextCommand } from "herdr";
 import { sessionAccount, machineColor, machineOf, SECTION_LABELS, FOLDED_BY_DEFAULT, snoozeUntil, dueSnoozes, SNOOZE_FOREVER, staleSettled, resumeArgv, rememberClosed, lostConversations, isShell, loginShell, shortAgo, flockFacets, flockMatches } from "./core.js";
 import { sessionOf, terminalAccount, parse, subagentsOf, openSubagent, readOn, platformOf, machineBadge, terminalFacts, titlesOn, recentPrompts, helper } from "./session.js";
 import { accounts, cleanTopic } from "./core.js";
@@ -145,8 +145,41 @@ export default class FalconFlock extends View {
     };
     refresh(cx);
     cx.timer.every(5000, refresh);
+    // Keys (keys.json): falcon-flock.attention / .snooze / .reopen / .pin.
+    cx.spawn(async (cx) => {
+      for (;;) {
+        const command = String(await nextCommand()).split(".").pop();
+        this.command(command);
+        cx.notify();
+      }
+    });
     // Lost terminals come back as shells a little after a start: then resume what ran in them.
     cx.timer.after(8000, (cx) => cx.spawn(async () => { await this.resumeLost(); this.lostChecked = true; }));
+  }
+
+  // A key's command. attention: the next agent that needs you (then the next that's done), after the
+  // shown one, settled ones too; snooze: the shown agent for an hour; reopen: the last closed
+  // conversation; pin: pin or unpin the shown agent.
+  command(command) {
+    const all = agents();
+    const shown = all.find((a) => a.focused);
+    if (command === "attention") {
+      const wanting = [...all.filter((a) => a.status === "blocked"), ...all.filter((a) => a.status === "done")];
+      if (!wanting.length) { notify({ title: "No agent needs you", level: "info", timeout: 2500 }); return; }
+      const at = wanting.findIndex((a) => a.address === shown?.address);
+      const next = wanting[(at + 1) % wanting.length];
+      const settled = spaces().flatMap((s) => s.tabs).find((x) => x.id === next.tab)?.settled;
+      if (settled) this.show(next); else run("pane.focus", { pane: next.pane });
+    } else if (command === "snooze" && shown) {
+      setShared(SNOOZED, { ...(shared(SNOOZED) ?? {}), [shown.address]: snoozeUntil("1h", new Date()) });
+      run("tab.settle", { id: shown.tab });
+      notify({ title: "Snoozed for an hour", body: "Its card wakes it sooner", level: "info", timeout: 2500 });
+    } else if (command === "reopen") {
+      const last = (shared(CLOSED) ?? [])[0];
+      if (last) this.reopen(last); else notify({ title: "Nothing closed to reopen", level: "info", timeout: 2500 });
+    } else if (command === "pin" && shown) {
+      run("terminal.pin", { terminal: shown.address, pinned: !shown.pinned });
+    }
   }
 
   // Settings → Titles → Agents list: Claude Haiku. A conversation's title follows what it's doing:

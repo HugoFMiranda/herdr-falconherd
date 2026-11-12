@@ -89,6 +89,29 @@ Left to right: a 268px sidebar, then the work column.
   sets each account's tool, config folder, color, icon and command, and the + menu's own entries,
   order and hidden agents. Changes save as they're made.
 
+## Keys
+
+The layout's own keys (`keys.json`, section `layout:falconherd`):
+
+| Key | Does |
+|---|---|
+| `Ctrl+Shift+S` / `D` / `M` | Side chat / fork of the focused conversation / send a brief to main |
+| `Ctrl+Shift+G` | Usage breakdown |
+| `Alt+Up` / `Alt+Down` | Previous / next space, as the sidebar shows them |
+| `Ctrl+Space` then `A` | The next agent that needs you (then the next that's done) |
+| `Ctrl+Space` then `S` / `Z` | Settle (put away) the shown tab / snooze its agent for an hour |
+| `Ctrl+Space` then `U` | Reopen the last closed conversation |
+| `Ctrl+Space` then `P` | Pin or unpin the shown agent |
+| `Ctrl+Space` then `L` | Back to the tab shown before |
+| `Alt+Shift+Left` / `Right` | Move the shown tab left / right |
+| `Ctrl+Space` then `R` | Regenerate the shown tab's title (Claude Haiku) |
+| `Ctrl+Space` then `F` / `C` | Files / Changes panel (again: hide it) |
+| `Ctrl+Shift+J` | Show or hide the side panel |
+| `Ctrl+Space` then `B` | Sub-agents of the focused conversation |
+| `Ctrl+Space` then `W` | Continue the focused conversation on another account |
+| `Shift+PageUp` / `PageDown` / `Home` / `End` | Scroll the terminal's history |
+| `F11` | Maximize the window, or back |
+
 ## Built from
 
 - **Layout tree**: `root` row → `sidebar` column (268px, min 44) [`brand` 46px falcon-roost

@@ -51,16 +51,26 @@ export default class FalconHood extends View {
     cx.timer.every(5000, refresh);
     cx.spawn(async (cx) => {
       for (;;) {
-        const command = await nextCommand();
+        const command = String(await nextCommand()).split(".").pop();
         if (!this.me()?.focused || !this.session) continue;
         if (command === "side" || command === "fork") cx.spawn(async () => this.copy(command));
         if (command === "send") this.askBrief();
+        if (command === "subagents") this.openSubagents();
+        if (command === "switch") this.continueOn();
         cx.notify();
       }
     });
   }
 
   me() { return panes().find((p) => p.pane === props()?.pane); }
+
+  // The sub-agents popup (the header's bot count, or the key falcon-hood.subagents).
+  openSubagents() {
+    const s = this.session;
+    if (!s) return;
+    openOverlay({ mod: "falcon-hood", kind: "popup", width: 390, height: 52 + Math.min(340, 31 * Math.max(1, this.subs.total)),
+      props: { subagentsOf: s.terminal, session: { tool: s.tool, account: s.account, sessionId: s.sessionId, machine: s.machine, home: s.home, cache: s.cache, terminal: s.terminal } } });
+  }
 
   // Its account: Claude's and Codex's by their session, another program's by the command it started with.
   account() {
@@ -255,7 +265,7 @@ export default class FalconHood extends View {
         .when(this.subs.total > 0, (el) => el.child(h_flex().id(`hood-subs-${pane}`).flex_none().h(20).px(5).gap(4).items_center().rounded(5).cursor_pointer()
           .text_size(11).text_color(this.subs.running ? t.working : t.dim).hover((x) => x.bg(t.hover).text_color(t.foreground))
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-          .on_click((_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "falcon-hood", kind: "popup", width: 390, height: 52 + Math.min(340, 31 * Math.max(1, this.subs.total)), props: { subagentsOf: s.terminal, session: { tool: s.tool, account: s.account, sessionId: s.sessionId, machine: s.machine, home: s.home, cache: s.cache, terminal: s.terminal } } }); })
+          .on_click((_e, cx) => { cx.stop_propagation(); this.openSubagents(); })
           .child(svg(OWN("bot")).size(13).flex_none()).child(this.subs.running ? `${this.subs.running}/${this.subs.total}` : String(this.subs.total))))
         .when(Boolean(md), (el) => el.child(this.tool(t, `hood-md-${pane}`, OWN("popout"), "Open the full rendering in the browser",
           () => exec(`${home()}/.local/bin/herdr-md-browser`, [md]).catch(() => notify({ title: "Couldn't open the browser view", level: "error" })))))

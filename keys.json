@@ -10,6 +10,49 @@
     "ctrl-shift-s": "falcon-hood.side",
     "ctrl-shift-d": "falcon-hood.fork",
     "ctrl-shift-m": "falcon-hood.send",
-    "ctrl-space r": "falcon-perch.regenerate"
+    "ctrl-space r": "falcon-perch.regenerate",
+    "ctrl-space a": "falcon-flock.attention",
+    "ctrl-space s": "tab.settle",
+    "ctrl-space z": "falcon-flock.snooze",
+    "ctrl-space u": "falcon-flock.reopen",
+    "ctrl-space l": "falcon-perch.last",
+    "alt-shift-left": "falcon-perch.move-left",
+    "alt-shift-right": "falcon-perch.move-right",
+    "shift-pageup": {
+      "command": "terminal.scroll",
+      "args": {
+        "pages": -1
+      }
+    },
+    "shift-pagedown": {
+      "command": "terminal.scroll",
+      "args": {
+        "pages": 1
+      }
+    },
+    "shift-home": {
+      "command": "terminal.scroll",
+      "args": {
+        "to": "top"
+      }
+    },
+    "shift-end": {
+      "command": "terminal.scroll",
+      "args": {
+        "to": "bottom"
+      }
+    },
+    "ctrl-shift-j": {
+      "command": "layout.toggle",
+      "args": {
+        "id": "panel"
+      }
+    },
+    "ctrl-space f": "falcon-perch.files",
+    "ctrl-space c": "falcon-perch.changes",
+    "ctrl-space b": "falcon-hood.subagents",
+    "ctrl-space w": "falcon-hood.switch",
+    "ctrl-space p": "falcon-flock.pin",
+    "f11": "window.maximize"
   }
 }

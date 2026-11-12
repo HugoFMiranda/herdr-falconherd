@@ -76,6 +76,11 @@ export default class FalconPerch extends View {
     };
     refresh(cx);
     cx.timer.every(5000, refresh);
+    // The tab shown before this one (falcon-perch.last goes back to it).
+    cx.timer.every(300, () => {
+      const id = spaces().find((x) => x.active)?.tabs.find((x) => x.active)?.id;
+      if (id && id !== this.currentTab) { this.previousTab = this.currentTab; this.currentTab = id; }
+    });
     // Regenerate title, asked from a tab menu (a popup: it closes before the answer comes).
     cx.timer.every(500, () => { const ask = shared(REGEN); if (ask && ask.at !== this.regenAt && !this.naming) cx.spawn(async () => this.name()); });
     // Keys: falcon-perch.regenerate (keys.json) asks a new title for the shown tab.
@@ -84,6 +89,7 @@ export default class FalconPerch extends View {
         const command = String(await nextCommand()).split(".").pop();
         const tab = spaces().find((x) => x.active)?.tabs.find((x) => x.active);
         if (command === "regenerate" && tab) regenerate(tab.id);
+        else this.command(command, tab);
       }
     });
   }
@@ -170,6 +176,26 @@ export default class FalconPerch extends View {
       .child(item("regenerate", null, "Regenerate title", "falcon-perch.regenerate", () => regenerate(id)))
       .child(item("new", "plus", "New tab", "tab.new", () => run("tab.new", { space })))
       .child(item("close", "x", "Close", "tab.close", () => run("tab.close", { id }), true));
+  }
+
+  // A key's command (keys.json): last (the tab shown before), move-left / move-right (the shown tab
+  // one place over), files / changes (that side panel; again: hide it).
+  command(command, tab) {
+    const space = spaces().find((x) => x.active);
+    const tabs = space?.tabs ?? [];
+    if (command === "last") {
+      const back = spaces().flatMap((s) => s.tabs).find((x) => x.id === this.previousTab);
+      if (back) run("tab.select", { id: back.id });
+    } else if ((command === "move-left" || command === "move-right") && tab) {
+      const at = tabs.findIndex((x) => x.id === tab.id) + 1; // 1 = first
+      const to = command === "move-left" ? at - 1 : at + 1;
+      if (to >= 1 && to <= tabs.length) run("tab.move", { id: tab.id, index: to });
+    } else if (command === "files" || command === "changes") {
+      const panel = findNode(layout(), "panel"), stack = findNode(layout(), "panel-body");
+      if (!panel || !stack?.children?.some((c) => c.id === command)) return;
+      if (!panel.hidden && stack.active === command) run("layout.hide", { id: "panel" });
+      else { run("layout.select", { stack: "panel-body", child: command }); run("layout.show", { id: "panel" }); }
+    }
   }
 
   // Each space remembers its side panel: switching to it shows its choice; changing it records it.
