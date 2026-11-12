@@ -1,0 +1,389 @@
+// falcon-perch: the bar above the panes. The active space's tabs (each with its account's glyph or
+// its program's icon, its name, and what its agent is doing: working, needs you, done), a list of
+// all of them, the ones away (settled or snoozed), the + launcher, the side panels the layout has,
+// and the window buttons where the system draws none.
+//   Click a tab: show it. Drag it onto another: move it there. Double-click: rename. Middle-click or
+//   ×: close. Right-click: the tab menu (Rename, Regenerate title, New tab, Close). Wheel: previous /
+//   next tab. With Settings → Titles → Tab names: Claude Haiku, tabs get names from their
+//   conversation (claude-tabname); see name().
+// Popups of this mod: props.away (the settled and snoozed), props.all (every tab of the space),
+// props.tabMenu ({ tab, space }).
+import { View, div, svg, image } from "gpui-kit";
+import { h_flex, v_flex } from "gpui-base";
+import { spaces, panes, run, shared, setShared, openOverlay, closeOverlay, props, theme, window, layout, settings, appHome, readTextFile, hc, exec, notify, keys, nextCommand } from "herdr";
+import { accounts, sessionAccount, cleanTabName, shellTopic, SNOOZE_FOREVER, tabTitle, shortAgo, panelFor, TAB_NAME_AT, keyLabel } from "./core.js";
+import { sessionOf, terminalAccount, parse, loadAccounts, readOn, helper, machineBadge, titlesOn, recentPrompts } from "./session.js";
+
+const ICON = (name) => `mods/workspace-chrome/${name}.svg`;
+const SNOOZED = "flock.snoozed"; // terminal -> until (the agents list, falcon-flock)
+const PEEKING = "tabs.peeking";           // tab -> { closed? }: settled, open for a look
+const AUTO = "auto-names";               // localStorage: tab -> { name, stage }: names this bar gave
+const REGEN = "perch.regenerate";        // shared { tab, at }: the tab menu asks for a new title
+const OWNER = "perch.owner";             // shared { id, at }: the copy that names tabs (if the bar is shown twice)
+const OWNER_STALE_MS = 15000;             // an owner silent this long is taken over
+const RETRY_MS = 30000;                   // a tab not ready to name waits this long; a failed ask 4x more each time
+const MAX_WAIT_MS = 30 * 60000;           // … up to this
+// Ask the bar for a new title for a tab (from its menu, or the key).
+const regenerate = (tab) => {
+  setShared(REGEN, { tab, at: Date.now() });
+  notify({ title: "Asking Claude Haiku for a title…", level: "info", timeout: 3000 });
+};
+// The key bound to a command (global or this layout's), as people read it; "" when none.
+const keyFor = (action) => {
+  const b = keys().find((k) => (k.section === "global" || k.section.startsWith("layout:")) && k.action === action);
+  return b ? keyLabel(b.keys, window()?.platform) : "";
+};
+const PANELS = { files: ["Files", "files"], changes: ["Changes", "git-compare"], devices: ["Devices", "monitor"] };
+
+const findNode = (node, id) => (node?.id === id ? node : (node?.children ?? []).map((c) => findNode(c, id)).find(Boolean) ?? null);
+const tabsOf = (space) => space?.tabs ?? [];
+const leadOf = (tab) => panes().find((p) => p.tab === tab.id && p.program?.agent) ?? null;
+const programOf = (tab) => leadOf(tab)?.program ?? panes().find((p) => p.tab === tab.id)?.program ?? null;
+
+// What a conversation is about, for its name: Claude's title, or Codex's first message.
+async function topicOf(s) {
+  if (s.tool === "claude") return parse(await readOn(`${s.cache}/claude/${s.sessionId}.json`, s.machine))?.title ?? null;
+  const r = await exec("sh", ["-c", `grep -m1 '"user_message"' "$1"`, "sh", s.rollout], s.machine ? { on: s.machine } : {}).catch(() => null);
+  const text = parse(r?.stdout?.trim())?.payload?.message;
+  return typeof text === "string" ? text.replace(/<[^>]+>/g, " ").trim().slice(0, 300) || null : null;
+}
+
+// A tab's look: its account's glyph and color ("icon|color"), else null (its program's icon then).
+async function lookOf(pane) {
+  const known = ["claude", "codex"].includes(pane.program?.key) || window()?.platform === "windows";
+  const a = (known ? sessionAccount(await sessionOf(pane.terminal).catch(() => null)) : null) ?? terminalAccount(pane.terminal, pane.program?.key);
+  return a ? `${a.icon}|${a.color}` : null;
+}
+
+export default class FalconPerch extends View {
+  init(_props, cx) {
+    this.looks = new Map();   // terminal -> "icon|color" (empty in the popups: their rows show programs' icons)
+    if (props()?.away || props()?.all || props()?.tabMenu) return;
+    this.triedAt = {};       // tab -> when naming it was last tried
+    this.fails = {};         // tab -> how many asks in a row brought no name (they wait longer each time)
+    this.regenAt = shared(REGEN)?.at; // asked before this copy started: done already (shared persists)
+    // One copy names tabs: it holds the lease (renewed every 5 s; a silent one is taken over).
+    this.copyId = Math.random().toString(36).slice(2);
+    const lease = () => {
+      const o = shared(OWNER);
+      if (!o || o.id === this.copyId || Date.now() - o.at > OWNER_STALE_MS) setShared(OWNER, { id: this.copyId, at: Date.now() });
+    };
+    lease();
+    cx.timer.every(5000, lease);
+    this.pressed = null;      // a tab being dragged
+    this.memory = parse(localStorage.getItem("panels")) ?? {}; // space -> its side panel (null: closed)
+    readTextFile(`${appHome()}/mods/insights/mod.json`).then((t) => { this.insights = Boolean(t); cx.notify(); }, () => {});
+    const refresh = (cx) => { if (!this.refreshing) { this.refreshing = true; cx.spawn(async (cx) => { try { await this.refreshLooks(cx); } finally { this.refreshing = false; } }); } };
+    this.refreshLooks = async (cx) => {
+      const next = new Map();
+      for (const p of panes().filter((x) => x.program?.agent && x.terminal)) {
+        const look = await lookOf(p);
+        if (look) next.set(p.terminal, look);
+      }
+      const key = (m) => [...m].sort().join();
+      if (key(next) !== key(this.looks)) { this.looks = next; cx.notify(); }
+      cx.spawn(async () => this.name()); // a name takes seconds: not waited for
+    };
+    refresh(cx);
+    cx.timer.every(5000, refresh);
+    // The tab shown before this one (falcon-perch.last goes back to it).
+    cx.timer.every(300, () => {
+      const id = spaces().find((x) => x.active)?.tabs.find((x) => x.active)?.id;
+      if (id && id !== this.currentTab) { this.previousTab = this.currentTab; this.currentTab = id; }
+    });
+    // Regenerate title, asked from a tab menu (a popup: it closes before the answer comes).
+    cx.timer.every(500, () => { const ask = shared(REGEN); if (ask && ask.at !== this.regenAt && !this.naming) cx.spawn(async () => this.name()); });
+    // Keys: falcon-perch.regenerate (keys.json) asks a new title for the shown tab.
+    cx.spawn(async () => {
+      for (;;) {
+        const command = String(await nextCommand()).split(".").pop();
+        const tab = spaces().find((x) => x.active)?.tabs.find((x) => x.active);
+        if (command === "regenerate" && tab) regenerate(tab.id);
+        else this.command(command, tab);
+      }
+    });
+  }
+
+  // Tab names by Claude Haiku: on their own when Settings → Titles → Tab names is "Claude Haiku", or
+  // for one tab when its menu's Regenerate title asks (any setting). A conversation's tab is named once
+  // it has TAB_NAME_AT[0] typed prompts (enough to say what it's about) and again at TAB_NAME_AT[1],
+  // while it still has the name this bar gave it: a name someone typed is never replaced on its own.
+  async name() {
+    if (this.naming || shared(OWNER)?.id !== this.copyId) return; // another copy of the bar names tabs
+    this.naming = true;
+    try {
+      await loadAccounts();
+      const ask = shared(REGEN);
+      const forced = ask && ask.at !== this.regenAt ? ask.tab : null;
+      if (forced) this.regenAt = ask.at;
+      if (titlesOn().tabs !== "haiku" && !forced) return;
+      const auto = parse(localStorage.getItem(AUTO)) ?? {};
+      const done = new Set(parse(localStorage.getItem("named")) ?? []);
+      const all = spaces().flatMap((s) => s.tabs);
+      for (const tab of forced ? all.filter((x) => x.id === forced) : all) {
+        const ours = auto[tab.id];
+        if (!forced && tab.named && tab.name !== ours?.name) continue; // the person's own name
+        if (!forced && Date.now() - (this.triedAt[tab.id] ?? 0) < Math.min(RETRY_MS * 4 ** (this.fails[tab.id] ?? 0), MAX_WAIT_MS)) continue;
+        this.triedAt[tab.id] = Date.now();
+        const job = await this.nameJob(tab, ours, done, Boolean(forced));
+        if (!job) { if (forced) notify({ title: "Nothing to name it from yet", body: "Send a message in it first", level: "info", timeout: 4000 }); continue; }
+        const r = await helper("claude-tabname", [job.dir, job.topic], job.machine, { timeout: 40000 }).catch(() => null);
+        const name = r?.code === 0 ? cleanTabName(r.stdout) : null;
+        const still = spaces().flatMap((s) => s.tabs).find((x) => x.id === tab.id);
+        if (!name) this.fails[tab.id] = (this.fails[tab.id] ?? 0) + 1;
+        if (!name || !still) { if (forced) notify({ title: "Couldn't get a title", body: "Claude Haiku didn't answer (the claude-tabname helper)", level: "warning", timeout: 5000 }); continue; }
+        if (!forced && still.named && still.name !== ours?.name) continue; // renamed meanwhile
+        run("tab.rename", { id: tab.id, name });
+        delete this.fails[tab.id];
+        auto[tab.id] = { name, stage: job.stage };
+        localStorage.setItem(AUTO, JSON.stringify(Object.fromEntries(Object.entries(auto).slice(-200))));
+        if (job.key) { done.add(job.key); localStorage.setItem("named", JSON.stringify([...done].slice(-200))); }
+      }
+    } finally { this.naming = false; }
+  }
+
+  // What to name a tab from, or null (nothing to say yet): { topic, dir, machine, stage, key? }.
+  async nameJob(tab, ours, done, forced) {
+    const lead = leadOf(tab);
+    if (lead) {
+      const s = await sessionOf(lead.terminal).catch(() => null);
+      if (!s) return null;
+      const claude = accounts(s.machine, "claude");
+      const dir = (claude.find((a) => a.id === s.account) ?? claude[0])?.dir;
+      if (!dir) return null;
+      if (s.tool === "claude") {
+        const stage = forced ? Math.max(1, ours?.stage ?? 1) : (ours?.stage ?? 0) + 1;
+        const p = await recentPrompts(s);
+        if (!forced && (stage > TAB_NAME_AT.length || (p?.count ?? 0) < TAB_NAME_AT[stage - 1])) return null;
+        const last = (p?.count ?? 0) >= TAB_NAME_AT.at(-1) ? TAB_NAME_AT.length : stage;
+        const title = parse(await readOn(`${s.cache}/claude/${s.sessionId}.json`, s.machine))?.title;
+        const topic = [title, ...(p?.recent ?? [])].filter(Boolean).join(" · ");
+        return topic ? { topic, dir, machine: s.machine, stage: forced ? stage : last } : null;
+      }
+      if (ours && !forced) return null; // Codex: named once, from its first message
+      const topic = await topicOf(s);
+      return topic ? { topic, dir, machine: s.machine, stage: TAB_NAME_AT.length } : null;
+    }
+    const first = panes().find((p) => p.tab === tab.id && p.terminal);
+    if (!first) return null;
+    const key = `term:${first.terminal}`;
+    if (!forced && (ours || done.has(key))) return null;
+    const topic = shellTopic(parse((await hc(["get", first.terminal]).catch(() => null))?.stdout ?? "")?.foreground, first.cwd);
+    const dir = accounts(null, "claude")[0]?.dir;
+    return topic && dir ? { topic, dir, machine: null, stage: TAB_NAME_AT.length, key } : null;
+  }
+
+  // The tab menu (right-click a tab): Herdr's items plus Regenerate title.
+  tabMenu(t) {
+    const { tabMenu: { tab: id, space }, overlay } = props();
+    const close = () => closeOverlay(overlay);
+    const item = (key, icon, label, command, action, danger = false) => h_flex().id(`perch-menu-${key}`).h(30).px(9).gap(9).flex_none().items_center().rounded(6)
+      .cursor_pointer().text_color(danger ? t.blocked : t.foreground).hover((s) => s.bg(t.selected)).on_click(() => { close(); action(); })
+      .child(svg(icon ? ICON(icon) : "mods/falcon-perch/spark.svg").size(13).flex_none().text_color(t.muted)).child(div().flex_1().child(label))
+      .child(div().flex_none().text_size(11).text_color(t.dim).child(keyFor(command)));
+    return v_flex().size_full().p(5).gap(1).bg(t.popover).text_size(12.5)
+      .child(item("rename", "square-pen", "Rename", "tab.rename", () => run("tab.rename", { id })))
+      .child(item("regenerate", null, "Regenerate title", "falcon-perch.regenerate", () => regenerate(id)))
+      .child(item("new", "plus", "New tab", "tab.new", () => run("tab.new", { space })))
+      .child(item("close", "x", "Close", "tab.close", () => run("tab.close", { id }), true));
+  }
+
+  // A key's command (keys.json): last (the tab shown before), move-left / move-right (the shown tab
+  // one place over), files / changes (that side panel; again: hide it).
+  command(command, tab) {
+    const space = spaces().find((x) => x.active);
+    const tabs = space?.tabs ?? [];
+    if (command === "last") {
+      const back = spaces().flatMap((s) => s.tabs).find((x) => x.id === this.previousTab);
+      if (back) run("tab.select", { id: back.id });
+    } else if ((command === "move-left" || command === "move-right") && tab) {
+      const at = tabs.findIndex((x) => x.id === tab.id) + 1; // 1 = first
+      const to = command === "move-left" ? at - 1 : at + 1;
+      if (to >= 1 && to <= tabs.length) run("tab.move", { id: tab.id, index: to });
+    } else if (command === "files" || command === "changes") {
+      const panel = findNode(layout(), "panel"), stack = findNode(layout(), "panel-body");
+      if (!panel || !stack?.children?.some((c) => c.id === command)) return;
+      if (!panel.hidden && stack.active === command) run("layout.hide", { id: "panel" });
+      else { run("layout.select", { stack: "panel-body", child: command }); run("layout.show", { id: "panel" }); }
+    }
+  }
+
+  // Each space remembers its side panel: switching to it shows its choice; changing it records it.
+  remember(space, panels) {
+    const panel = findNode(layout(), "panel"), stack = findNode(layout(), "panel-body");
+    if (!space || !panel) return;
+    const now = panel.hidden ? null : stack?.active ?? null;
+    if (space.id !== this.spaceId) {
+      const fresh = this.spaceId === undefined;
+      this.spaceId = space.id;
+      const want = fresh ? undefined : panelFor(this.memory, space.id, panels);
+      if (want !== undefined && want !== now) {
+        this.restoring = { want, until: Date.now() + 1000 };
+        if (want) { run("layout.select", { stack: "panel-body", child: want }); run("layout.show", { id: "panel" }); }
+        else run("layout.hide", { id: "panel" });
+        return;
+      }
+    }
+    if (this.restoring && this.restoring.want !== now && Date.now() < this.restoring.until) return; // still landing
+    this.restoring = null;
+    if (this.memory[space.id] === now) return;
+    this.memory = { ...this.memory, [space.id]: now };
+    localStorage.setItem("panels", JSON.stringify(this.memory));
+  }
+
+  // A tab's state mark: snoozed or open for a look (dim, a mark that keeps it as it is), and its
+  // agent's status.
+  awayState(tab) {
+    const snoozedMap = shared(SNOOZED) ?? {};
+    const snoozed = panes().filter((p) => p.tab === tab.id && snoozedMap[p.terminal]).map((p) => p.terminal);
+    const look = (shared(PEEKING) ?? {})[tab.id];
+    if (snoozed.length) return { kind: "snoozed", icon: "clock", tip: "Snoozed: it goes back when you leave it. Click to wake it",
+      keep: () => setShared(SNOOZED, Object.fromEntries(Object.entries(snoozedMap).filter(([k]) => !snoozed.includes(k)))) };
+    if (look) return { kind: "look", icon: look.closed ? "pin" : "archive",
+      tip: look.closed ? "Reopened: it closes again when you leave it. Click to keep it open" : "Settled: it goes back when you leave it. Click to keep it out",
+      keep: () => { const rest = { ...(shared(PEEKING) ?? {}) }; delete rest[tab.id]; setShared(PEEKING, rest); } };
+    return null;
+  }
+
+  tabIcon(t, tab, dim) {
+    const lead = leadOf(tab);
+    const look = lead && this.looks.get(lead.terminal);
+    const program = programOf(tab);
+    const el = look ? svg(look.split("|")[0]).size(14).flex_none().text_color(look.split("|")[1])
+      : program?.icon ? (program.tint ? svg(program.icon).size(14).flex_none().text_color(t.muted) : image(program.icon).w(14).h(14).flex_none())
+      : svg(ICON("terminal")).size(14).flex_none().text_color(t.muted);
+    return el.when(dim, (x) => x.opacity(0.4));
+  }
+
+  statusMark(t, tab) {
+    if (tab.status === "working") return svg(ICON("spinner")).size(12).flex_none().text_color(t.working).spin(900);
+    if (tab.status === "blocked") return div().size(7).flex_none().rounded(4).bg(t.blocked);
+    if (tab.status === "done") return svg(ICON("check")).size(12).flex_none().text_color(t.done);
+    return null;
+  }
+
+  tab(t, space, shown, tab, i) {
+    const away = this.awayState(tab);
+    const mark = this.statusMark(t, tab);
+    const stop = (_e, cx) => cx.stop_propagation();
+    return h_flex().id(`perch-${tab.id}`).h(30).pl(9).pr(tab.active ? 5 : 10).gap(7).flex_none().items_center().rounded(8).text_size(12.8)
+      .bg(tab.active ? t.raised : t.chrome).border_1().border_color(tab.active ? t.border : t.chrome)
+      .text_color(tab.active ? t.foreground : t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground))
+      .when(this.pressed !== null && this.pressed !== i, (el) => el.border_color(t.border))
+      .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.pressed = i; if (e.click_count === 2) run("tab.rename", { id: tab.id }); })
+      .on_mouse_up("left", () => {
+        const from = this.pressed;
+        this.pressed = null;
+        if (from !== null && from !== i) run("tab.move", { id: shown[from].id, index: tabsOf(space).findIndex((x) => x.id === tab.id) + 1 });
+        else run("tab.select", { id: tab.id });
+      })
+      .on_mouse_down("middle", (_e, cx) => { cx.stop_propagation(); run("tab.close", { id: tab.id }); })
+      .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "falcon-perch", kind: "popup", width: 260, height: 136, props: { tabMenu: { tab: tab.id, space: space.id } } }); })
+      .child(this.tabIcon(t, tab, Boolean(away)))
+      .child(div().max_w(180).truncate().child(tabTitle(tab, programOf(tab))))
+      .when(Boolean(mark), (el) => el.child(mark))
+      .when(Boolean(away), (el) => el.child(div().id(`perch-keep-${tab.id}`).flex_none().p(2).rounded(4).text_color(t.dim)
+        .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_mouse_down("left", stop)
+        .on_click((_e, cx) => { cx.stop_propagation(); away.keep(); }).tooltip(away.tip).child(svg(ICON(away.icon)).size(12))))
+      .when(tab.active, (el) => el.child(div().id(`perch-close-${tab.id}`).flex_none().p(3).rounded(5).text_color(t.dim)
+        .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_mouse_down("left", stop)
+        .on_click((_e, cx) => { cx.stop_propagation(); run("tab.close", { id: tab.id }); }).child(svg(ICON("x")).size(11))));
+  }
+
+  // A popup's rows: a tab, what it is, and when.
+  popupRow(t, tab, when, onClick) {
+    return h_flex().id(`perch-row-${tab.id}`).h(30).px(8).gap(8).flex_none().items_center().rounded(6).cursor_pointer()
+      .bg(tab.active ? t.selected : t.popover).hover((s) => s.bg(t.selected)).on_click(onClick)
+      .child(this.tabIcon(t, tab, false)).child(div().flex_1().min_w(0).truncate().child(tabTitle(tab, programOf(tab))))
+      .when(Boolean(this.statusMark(t, tab)), (el) => el.child(this.statusMark(t, tab)))
+      .child(div().flex_none().text_size(11).text_color(t.dim).child(when ?? ""));
+  }
+
+  popup(t) {
+    const { away, all, overlay } = props();
+    const space = spaces().find((s) => s.id === (away ?? all));
+    const close = () => closeOverlay(overlay);
+    const box = (title, rows) => v_flex().size_full().p(5).gap(1).bg(t.popover).text_size(12.5).text_color(t.foreground)
+      .child(div().px(8).pt(3).pb(4).text_size(11).font_semibold().text_color(t.dim).child(title)).children(rows);
+    if (all) {
+      return box(`All tabs · ${tabsOf(space).length}`, tabsOf(space).map((tab) => this.popupRow(t, tab, tab.settled ? "away" : "", () => {
+        close();
+        if (tab.settled) setShared(PEEKING, { ...(shared(PEEKING) ?? {}), [tab.id]: true });
+        run("tab.select", { id: tab.id });
+      })));
+    }
+    const snoozedMap = shared(SNOOZED) ?? {};
+    const pad = (n) => String(n).padStart(2, "0");
+    return box("Settled and snoozed", tabsOf(space).filter((tab) => tab.settled).map((tab) => {
+      const until = Math.max(0, ...panes().filter((p) => p.tab === tab.id).map((p) => snoozedMap[p.terminal] ?? 0));
+      const d = new Date(until);
+      const when = !until ? `${shortAgo(Date.now() - (tab.settled_at ?? Date.now()))} ago` : until >= SNOOZE_FOREVER ? "until woken" : `until ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      return this.popupRow(t, tab, when, () => {
+        close();
+        // A look: it goes back once another tab is shown (the agents list puts it back).
+        if (!until) setShared(PEEKING, { ...(shared(PEEKING) ?? {}), [tab.id]: true });
+        run("tab.select", { id: tab.id });
+      });
+    }));
+  }
+
+  render() {
+    const t = theme();
+    if (props()?.tabMenu) return this.tabMenu(t);
+    if (props()?.away || props()?.all) return this.popup(t);
+    const space = spaces().find((s) => s.active);
+    const all = tabsOf(space);
+    const shown = all.filter((tab) => !tab.settled || tab.active); // settled ones live in the agents list
+    const awayCount = all.length - shown.length;
+    const stack = findNode(layout(), "panel-body");
+    const panels = (stack?.children ?? []).map((c) => c.id).filter(Boolean);
+    this.remember(space, panels);
+    const panelOpen = (() => { const p = findNode(layout(), "panel"); return p && !p.hidden ? stack?.active : null; })();
+    const w = window();
+    const sidebar = findNode(layout(), "sidebar");
+    // macOS: room for the traffic lights when the sidebar is too narrow to hold them.
+    const lights = w?.platform === "macos" && w.titlebar === "none" && !w.fullscreen && layout()?.traffic_lights
+      ? Math.max(10, (layout().traffic_lights[0] + 64) / settings().zoom - (sidebar?.hidden ? 0 : sidebar?.size?.px ?? 0)) : 10;
+    const stop = (_e, cx) => cx.stop_propagation();
+    // Buttons that open a popup get no tooltip: it would sit over the popup.
+    const chip = (id, icon, label, on, onClick, tip) => h_flex().id(id).h(26).px(8).gap(5).flex_none().items_center().rounded(7).text_size(12)
+      .bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground))
+      .on_mouse_down("left", stop).on_click(onClick).when(Boolean(tip), (el) => el.tooltip(tip))
+      .child(svg(icon).size(14).flex_none()).when(Boolean(label), (el) => el.child(label));
+    const windowButton = (id, icon, action) => div().id(id).size(28).flex_none().flex().items_center().justify_center().rounded(6)
+      .text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.foreground)).on_mouse_down("left", stop).on_click(() => run(action))
+      .child(svg(ICON(icon)).size(14));
+    return h_flex().size_full().min_w(0).pr(8).pl(lights).gap(4).items_center().bg(t.chrome).border_b_1().border_color(t.border)
+      .on_mouse_up("left", () => { this.pressed = null; })
+      .on_scroll_wheel((e) => {
+        if (Math.abs(e.delta.y) < 1 || Date.now() - (this.wheelAt ?? 0) < 120) return;
+        this.wheelAt = Date.now();
+        run(e.delta.y > 0 ? "tab.prev" : "tab.next");
+      })
+      .when(Boolean(space?.machine), (el) => el.child(machineBadge(t, space.machine)))
+      .child(h_flex().id("perch-tabs").flex_1().min_w(0).h_full().items_center().gap(3).overflow_x_scrollbar()
+        .children(shown.map((tab, i) => this.tab(t, space, shown, tab, i))))
+      .when(all.length > 5, (el) => el.child(chip("perch-all", ICON("layers"), String(all.length), false,
+        () => openOverlay({ mod: "falcon-perch", kind: "popup", width: 300, height: Math.min(420, 31 * all.length + 34), props: { all: space.id } }))))
+      .when(awayCount > 0, (el) => el.child(chip("perch-away", ICON("archive"), `${awayCount} away`, false,
+        () => openOverlay({ mod: "falcon-perch", kind: "popup", width: 300, height: Math.min(360, 31 * awayCount + 34), props: { away: space.id } }))))
+      .child(chip("perch-new", ICON("plus"), "", false, () => openOverlay({ mod: "falcon-launch", kind: "popup", width: 280, height: 560 }), "Start something"))
+      .child(div().w(6))
+      .when(Boolean(this.insights), (el) => el.child(chip("perch-insights", "mods/insights/insights.svg", "Insights", false, () => {
+        const tab = all.find((x) => panes().some((p) => p.tab === x.id && p.mod === "insights"));
+        if (tab) run("tab.select", { id: tab.id }); else run("tab.new", { space: space?.id, name: "Insights", mod: "insights" });
+      })))
+      .children(panels.map((id) => {
+        const [label, icon] = PANELS[id] ?? [id.charAt(0).toUpperCase() + id.slice(1), "square"];
+        const on = panelOpen === id;
+        return chip(`perch-panel-${id}`, ICON(icon), label, on, () => {
+          if (on) run("layout.hide", { id: "panel" });
+          else { run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
+        });
+      }))
+      .when(Boolean(w?.buttons), (el) => el.child(div().w(6))
+        .child(windowButton("perch-min", "minus", "window.minimize"))
+        .child(windowButton("perch-max", "square", "window.maximize"))
+        .child(windowButton("perch-close", "x", "window.close")));
+  }
+}

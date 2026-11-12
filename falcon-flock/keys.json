@@ -1,0 +1,8 @@
+{
+  "global": {
+    "ctrl-space a": "falcon-flock.attention",
+    "ctrl-space z": "falcon-flock.snooze",
+    "ctrl-space u": "falcon-flock.reopen",
+    "ctrl-space p": "falcon-flock.pin"
+  }
+}
