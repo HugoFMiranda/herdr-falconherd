@@ -19,6 +19,8 @@ const SNOOZED = "flock.snoozed"; // terminal -> until (the agents list, falcon-f
 const PEEKING = "tabs.peeking";           // tab -> { closed? }: settled, open for a look
 const AUTO = "auto-names";               // localStorage: tab -> { name, stage }: names this bar gave
 const REGEN = "perch.regenerate";        // shared { tab, at }: the tab menu asks for a new title
+const OWNER = "perch.owner";             // shared { id, at }: the copy that names tabs (if the bar is shown twice)
+const OWNER_STALE_MS = 15000;             // an owner silent this long is taken over
 const RETRY_MS = 30000;                   // a tab not ready to name waits this long; a failed ask 4x more each time
 const MAX_WAIT_MS = 30 * 60000;           // … up to this
 // Ask the bar for a new title for a tab (from its menu, or the key).
@@ -60,6 +62,14 @@ export default class FalconPerch extends View {
     this.triedAt = {};       // tab -> when naming it was last tried
     this.fails = {};         // tab -> how many asks in a row brought no name (they wait longer each time)
     this.regenAt = shared(REGEN)?.at; // asked before this copy started: done already (shared persists)
+    // One copy names tabs: it holds the lease (renewed every 5 s; a silent one is taken over).
+    this.copyId = Math.random().toString(36).slice(2);
+    const lease = () => {
+      const o = shared(OWNER);
+      if (!o || o.id === this.copyId || Date.now() - o.at > OWNER_STALE_MS) setShared(OWNER, { id: this.copyId, at: Date.now() });
+    };
+    lease();
+    cx.timer.every(5000, lease);
     this.pressed = null;      // a tab being dragged
     this.memory = parse(localStorage.getItem("panels")) ?? {}; // space -> its side panel (null: closed)
     readTextFile(`${appHome()}/mods/insights/mod.json`).then((t) => { this.insights = Boolean(t); cx.notify(); }, () => {});
@@ -99,7 +109,7 @@ export default class FalconPerch extends View {
   // it has TAB_NAME_AT[0] typed prompts (enough to say what it's about) and again at TAB_NAME_AT[1],
   // while it still has the name this bar gave it: a name someone typed is never replaced on its own.
   async name() {
-    if (this.naming) return;
+    if (this.naming || shared(OWNER)?.id !== this.copyId) return; // another copy of the bar names tabs
     this.naming = true;
     try {
       await loadAccounts();
