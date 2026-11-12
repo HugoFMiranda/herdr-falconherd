@@ -12,7 +12,7 @@ sub-agents and its state. On hover or focus a toolbar appears.
 Ask the agent in Herdr:
 
 ```text
-Read ~/.config/herdr-app/AGENTS.md, then add this mod from <this repo's URL>/tree/main/falcon-header
+Read ~/.config/herdr-app/AGENTS.md, then add this mod from https://github.com/HugoFMiranda/herdr-falconherd/tree/main/falcon-header
 ```
 
 It ships with: falcon-status (its account menu, for Continue on…), falcon-accounts (the Accounts window) and falcon-md (sub-agent pages).

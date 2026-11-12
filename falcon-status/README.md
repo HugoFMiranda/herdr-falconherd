@@ -11,7 +11,7 @@ agents count on the left.
 Ask the agent in Herdr:
 
 ```text
-Read ~/.config/herdr-app/AGENTS.md, then add this mod from <this repo's URL>/tree/main/falcon-status
+Read ~/.config/herdr-app/AGENTS.md, then add this mod from https://github.com/HugoFMiranda/herdr-falconherd/tree/main/falcon-status
 ```
 
 It ships with: falcon-accounts (the Accounts window: accounts, the + menu's entries, Titles).

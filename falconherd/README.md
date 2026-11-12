@@ -9,8 +9,7 @@ to another machine), and a status bar with the agent's model, effort and usage.
 
 ## Add it
 
-Ask the agent in Herdr: "Read ~/.config/herdr-app/AGENTS.md, then add this layout from <this repo's
-URL>/tree/main/falconherd". It copies `layouts/` and `mods/`, merges `keys.json`, checks each mod and
+Ask the agent in Herdr: "Read ~/.config/herdr-app/AGENTS.md, then add this layout from https://github.com/HugoFMiranda/herdr-falconherd/tree/main/falconherd". It copies `layouts/` and `mods/`, merges `keys.json`, checks each mod and
 switches to the layout (ctrl-shift-l switches back). Each part is also a mod of its own: see the
 repo's README.
 

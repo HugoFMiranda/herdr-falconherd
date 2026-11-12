@@ -12,7 +12,7 @@ launcher sit on the right.
 Ask the agent in Herdr:
 
 ```text
-Read ~/.config/herdr-app/AGENTS.md, then add this mod from <this repo's URL>/tree/main/falcon-tabs
+Read ~/.config/herdr-app/AGENTS.md, then add this mod from https://github.com/HugoFMiranda/herdr-falconherd/tree/main/falcon-tabs
 ```
 
 It ships with: falcon-launch (the `+` popover) and falcon-accounts (the Accounts window, from the popover's Edit this menu).

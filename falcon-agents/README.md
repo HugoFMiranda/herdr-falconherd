@@ -12,7 +12,7 @@ Settled, Recently closed.
 Ask the agent in Herdr:
 
 ```text
-Read ~/.config/herdr-app/AGENTS.md, then add this mod from <this repo's URL>/tree/main/falcon-agents
+Read ~/.config/herdr-app/AGENTS.md, then add this mod from https://github.com/HugoFMiranda/herdr-falconherd/tree/main/falcon-agents
 ```
 
 It ships with: falcon-md (the Markdown window, for sub-agent pages).

@@ -11,7 +11,7 @@ a file or folder to another connected machine.
 Ask the agent in Herdr:
 
 ```text
-Read ~/.config/herdr-app/AGENTS.md, then add this mod from <this repo's URL>/tree/main/falcon-files
+Read ~/.config/herdr-app/AGENTS.md, then add this mod from https://github.com/HugoFMiranda/herdr-falconherd/tree/main/falcon-files
 ```
 
 It ships with: falcon-md (the Markdown window).

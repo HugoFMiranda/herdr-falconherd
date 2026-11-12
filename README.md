@@ -35,7 +35,7 @@ Add it all with the `falconherd` folder, or take only the parts you want.
 Copy this into the agent in Herdr, with the folder you want:
 
 ```text
-Read ~/.config/herdr-app/AGENTS.md, then add this from <this repo's URL>/tree/main/<folder>
+Read ~/.config/herdr-app/AGENTS.md, then add this from https://github.com/HugoFMiranda/herdr-falconherd/tree/main/<folder>
 ```
 
 The agent follows that folder's `RECIPE.md`: it copies the mods (and the layout, for `falconherd`),

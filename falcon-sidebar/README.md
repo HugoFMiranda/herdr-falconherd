@@ -13,7 +13,7 @@ under their checkout.
 Ask the agent in Herdr:
 
 ```text
-Read ~/.config/herdr-app/AGENTS.md, then add this mod from <this repo's URL>/tree/main/falcon-sidebar
+Read ~/.config/herdr-app/AGENTS.md, then add this mod from https://github.com/HugoFMiranda/herdr-falconherd/tree/main/falcon-sidebar
 ```
 
 It ships with: Nothing else: it uses Herdr's own picker, machine-add and worktree mods.

@@ -11,7 +11,7 @@ folds), diffs inline under each file, and a commit box.
 Ask the agent in Herdr:
 
 ```text
-Read ~/.config/herdr-app/AGENTS.md, then add this mod from <this repo's URL>/tree/main/falcon-changes
+Read ~/.config/herdr-app/AGENTS.md, then add this mod from https://github.com/HugoFMiranda/herdr-falconherd/tree/main/falcon-changes
 ```
 
 It ships with: Nothing else.
