@@ -7,8 +7,6 @@ Settled, Recently closed.
 
 ![Falcon Agents](preview.png)
 
-*Filter chips by account and machine; the agent that needs you on top; working ones with what they're doing right now; Work, Personal and Codex colors on the edge, a devbox badge and a sub-agent count.*
-
 ## Add it
 
 Ask the agent in Herdr:

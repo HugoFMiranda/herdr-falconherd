@@ -6,8 +6,6 @@ folds), diffs inline under each file, and a commit box.
 
 ![Falcon Changes](preview.png)
 
-*Staged and unstaged files in the folder tree, with their checkboxes, an inline diff, and the commit box.*
-
 ## Add it
 
 Ask the agent in Herdr:

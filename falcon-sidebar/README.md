@@ -8,8 +8,6 @@ under their checkout.
 
 ![Falcon Sidebar](preview.png)
 
-*Two machines in their colors (this computer and devbox), the Acme and Side projects folders, a space whose agent needs you (the red 1) and ones at work, and devbox's right-click menu: new space, new folder, its color.*
-
 ## Add it
 
 Ask the agent in Herdr:

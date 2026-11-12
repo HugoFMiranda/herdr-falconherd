@@ -6,8 +6,6 @@ agents count on the left.
 
 ![Falcon Status](preview.png)
 
-*The model menu (a model and its effort, or continue on another account) over the bar: model · effort, the account and its plan, 5-hour and weekly usage.*
-
 ## Add it
 
 Ask the agent in Herdr:

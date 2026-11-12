@@ -7,8 +7,6 @@ launcher sit on the right.
 
 ![Falcon Tabs](preview.png)
 
-*The space's tabs in their account's color with their state, and the `+` launcher with an entry for each account.*
-
 ## Add it
 
 Ask the agent in Herdr:

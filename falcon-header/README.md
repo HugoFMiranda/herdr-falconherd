@@ -7,8 +7,6 @@ sub-agents and its state. On hover or focus a toolbar appears.
 
 ![Falcon Header](preview.png)
 
-*The account chip (Work) with the conversation's name, the context it has used, and its sub-agents: two running, one done.*
-
 ## Add it
 
 Ask the agent in Herdr:
