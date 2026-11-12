@@ -324,12 +324,17 @@ export function shellTopic(fg, cwd) {
   return `the command \`${cmd}\`${home ? "" : ` in the folder ${cwd.split("/").filter(Boolean).pop()}`}`;
 }
 
-// A model's answer as a title: its first line, no quotes, at most `words` words, as many of them as
-// fit in `chars` (a long one is shortened, not dropped); paths and end punctuation left out.
+// A model's answer as a title: its first real line (not a "Here is a title:" lead-in), no quotes, at
+// most `words` words, as many of them as fit in `chars` (a long one is shortened, not dropped); file
+// paths and end punctuation left out. A refusal or a question back ("I need more context…") is null.
+const PATH_WORD = /^([A-Za-z]:[\\/]|[~.]{0,2}\/|\\\\)|[\\/].*[\\/]/;
+const NOT_A_TITLE = /^(i\b|i'm|i am|sorry|unable|cannot|can't|could you|please provide|as an ai|there (is|are) no)/i;
 export function cleanTitle(raw, words, chars) {
-  const line = String(raw ?? "").split("\n")[0].trim().replace(/^["'`“”‘’]+|["'`“”‘’]+$/g, "");
+  const lines = String(raw ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
+  const line = (lines.find((l) => !/:$/.test(l)) ?? "").replace(/^["'`“”‘’*_]+|["'`“”‘’*_]+$/g, "");
+  if (NOT_A_TITLE.test(line)) return null;
   const kept = [];
-  for (const w of line.split(/\s+/).filter((x) => x && !/[\\/]/.test(x)).slice(0, words)) {
+  for (const w of line.split(/\s+/).filter((x) => x && !PATH_WORD.test(x)).slice(0, words)) {
     const next = [...kept, w].join(" ").replace(/[.,;:!?]+$/, "");
     if (next.length > chars) break;
     kept.push(w);

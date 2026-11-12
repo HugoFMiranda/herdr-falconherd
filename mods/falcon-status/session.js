@@ -293,8 +293,10 @@ export async function recentPrompts(s) {
   if (s?.tool !== "claude") return null;
   const log = await claudeLog(s);
   if (!log) return null;
-  const typed = 'grep -F \'"type":"user"\' "$1" | grep -vF \'"tool_use_id"\'';
-  const r = await exec("sh", ["-c", `${typed} | wc -l; ${typed} | tail -n 40`, "sh", log], on(s.machine)).catch(() => null);
+  // One pass: user lines that aren't tool results, meta lines or slash commands; their count first,
+  // then the last 40 of them.
+  const script = 'grep -F \'"type":"user"\' "$1" | grep -vF -e \'"type":"tool_result"\' -e \'"isMeta":true\' -e \'<command-\' | awk \'{ n++; last[n % 40] = $0 } END { print n + 0; for (i = n - 39; i <= n; i++) if (i > 0) print last[i % 40] }\'';
+  const r = await exec("sh", ["-c", script, "sh", log], on(s.machine)).catch(() => null);
   if (r?.code !== 0) return null;
   const [first, ...lines] = r.stdout.split("\n");
   const recent = promptsFrom(lines).slice(-3);

@@ -19,7 +19,8 @@ const SNOOZED = "flock.snoozed"; // terminal -> until (the agents list, falcon-f
 const PEEKING = "tabs.peeking";           // tab -> { closed? }: settled, open for a look
 const AUTO = "auto-names";               // localStorage: tab -> { name, stage }: names this bar gave
 const REGEN = "perch.regenerate";        // shared { tab, at }: the tab menu asks for a new title
-const RETRY_MS = 30000;                   // a tab not ready to name (or a failed ask) waits this long
+const RETRY_MS = 30000;                   // a tab not ready to name waits this long; a failed ask 4x more each time
+const MAX_WAIT_MS = 30 * 60000;           // … up to this
 // Ask the bar for a new title for a tab (from its menu, or the key).
 const regenerate = (tab) => {
   setShared(REGEN, { tab, at: Date.now() });
@@ -57,6 +58,8 @@ export default class FalconPerch extends View {
     this.looks = new Map();   // terminal -> "icon|color" (empty in the popups: their rows show programs' icons)
     if (props()?.away || props()?.all || props()?.tabMenu) return;
     this.triedAt = {};       // tab -> when naming it was last tried
+    this.fails = {};         // tab -> how many asks in a row brought no name (they wait longer each time)
+    this.regenAt = shared(REGEN)?.at; // asked before this copy started: done already (shared persists)
     this.pressed = null;      // a tab being dragged
     this.memory = parse(localStorage.getItem("panels")) ?? {}; // space -> its side panel (null: closed)
     readTextFile(`${appHome()}/mods/insights/mod.json`).then((t) => { this.insights = Boolean(t); cx.notify(); }, () => {});
@@ -104,16 +107,18 @@ export default class FalconPerch extends View {
       for (const tab of forced ? all.filter((x) => x.id === forced) : all) {
         const ours = auto[tab.id];
         if (!forced && tab.named && tab.name !== ours?.name) continue; // the person's own name
-        if (!forced && Date.now() - (this.triedAt[tab.id] ?? 0) < RETRY_MS) continue;
+        if (!forced && Date.now() - (this.triedAt[tab.id] ?? 0) < Math.min(RETRY_MS * 4 ** (this.fails[tab.id] ?? 0), MAX_WAIT_MS)) continue;
         this.triedAt[tab.id] = Date.now();
         const job = await this.nameJob(tab, ours, done, Boolean(forced));
         if (!job) { if (forced) notify({ title: "Nothing to name it from yet", body: "Send a message in it first", level: "info", timeout: 4000 }); continue; }
         const r = await helper("claude-tabname", [job.dir, job.topic], job.machine, { timeout: 40000 }).catch(() => null);
         const name = r?.code === 0 ? cleanTabName(r.stdout) : null;
         const still = spaces().flatMap((s) => s.tabs).find((x) => x.id === tab.id);
+        if (!name) this.fails[tab.id] = (this.fails[tab.id] ?? 0) + 1;
         if (!name || !still) { if (forced) notify({ title: "Couldn't get a title", body: "Claude Haiku didn't answer (the claude-tabname helper)", level: "warning", timeout: 5000 }); continue; }
         if (!forced && still.named && still.name !== ours?.name) continue; // renamed meanwhile
         run("tab.rename", { id: tab.id, name });
+        delete this.fails[tab.id];
         auto[tab.id] = { name, stage: job.stage };
         localStorage.setItem(AUTO, JSON.stringify(Object.fromEntries(Object.entries(auto).slice(-200))));
         if (job.key) { done.add(job.key); localStorage.setItem("named", JSON.stringify([...done].slice(-200))); }
@@ -134,9 +139,10 @@ export default class FalconPerch extends View {
         const stage = forced ? Math.max(1, ours?.stage ?? 1) : (ours?.stage ?? 0) + 1;
         const p = await recentPrompts(s);
         if (!forced && (stage > TAB_NAME_AT.length || (p?.count ?? 0) < TAB_NAME_AT[stage - 1])) return null;
+        const last = (p?.count ?? 0) >= TAB_NAME_AT.at(-1) ? TAB_NAME_AT.length : stage;
         const title = parse(await readOn(`${s.cache}/claude/${s.sessionId}.json`, s.machine))?.title;
         const topic = [title, ...(p?.recent ?? [])].filter(Boolean).join(" · ");
-        return topic ? { topic, dir, machine: s.machine, stage } : null;
+        return topic ? { topic, dir, machine: s.machine, stage: forced ? stage : last } : null;
       }
       if (ours && !forced) return null; // Codex: named once, from its first message
       const topic = await topicOf(s);

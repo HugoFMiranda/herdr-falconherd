@@ -83,7 +83,9 @@ export default class FalconFlock extends View {
     this.subagents = new Map();  // terminal -> its running Claude sub-agents
     this.subsOpen = new Set();   // cards whose running sub-agents are shown (folded by default)
     this.lastStatus = new Map(); // terminal -> its status last refresh (a reply ends: working -> not)
-    this.topicAt = new Map();    // session -> when its topic was last asked
+    this.topicAt = new Map();    // session -> when its topic may be asked next
+    this.topicDue = new Set();   // sessions whose reply ended since their topic was asked
+    this.topicFails = new Map(); // session -> asks in a row that brought no title
     this.changed = parse(localStorage.getItem("changed")) ?? {}; // terminal -> { s, at }: since when it's in its state
     this.copied = { address: null, until: 0 };
     cx.timer.every(30000, (cx) => cx.notify());
@@ -132,8 +134,9 @@ export default class FalconFlock extends View {
         setShared(CLOSED, rememberClosed(shared(CLOSED) ?? [], { ...k, at: Date.now() }));
       }
       if (this.lostChecked) setShared(OPEN, Object.fromEntries(this.known));
-      if (titlesOn().cards === "haiku") this.askTopics(live, next);
+      for (const a of live) if (this.lastStatus.get(a.address) === "working" && a.status !== "working" && next.get(a.address)) this.topicDue.add(next.get(a.address).sessionId);
       this.lastStatus = new Map(live.map((a) => [a.address, a.status]));
+      if (titlesOn().cards === "haiku") this.askTopics(live, next);
       this.wake();
       const key = (m) => [...m].map(([k, v]) => `${k}=${v.name}/${this.known.get(k)?.title}/${v.look?.id}/${v.look?.color}/${v.look?.icon}`).sort().join();
       const subKey = [...this.subagents].map(([k, v]) => `${k}:${v.map((x) => x.id).join(",")}`).join(";");
@@ -151,22 +154,29 @@ export default class FalconFlock extends View {
   askTopics(live, sessions) {
     if (this.asking) return;
     const topics = shared(TOPICS) ?? {};
-    const due = live.map((a) => ({ a, s: sessions.get(a.address) })).find(({ a, s }) => s?.tool === "claude"
-      && (!topics[s.sessionId] || (this.lastStatus.get(a.address) === "working" && a.status !== "working"))
-      && Date.now() - (this.topicAt.get(s.sessionId) ?? 0) > TOPIC_EVERY);
+    const due = live.map((a) => ({ a, s: sessions.get(a.address) })).find(({ s }) => s?.tool === "claude"
+      && (!topics[s.sessionId] || this.topicDue.has(s.sessionId))
+      && Date.now() >= (this.topicAt.get(s.sessionId) ?? 0));
     if (!due) return;
     const { s } = due;
-    this.topicAt.set(s.sessionId, Date.now());
+    this.topicDue.delete(s.sessionId);
+    this.topicAt.set(s.sessionId, Date.now() + TOPIC_EVERY);
     this.asking = true;
+    const failed = () => {
+      const n = (this.topicFails.get(s.sessionId) ?? 0) + 1;
+      this.topicFails.set(s.sessionId, n);
+      this.topicAt.set(s.sessionId, Date.now() + Math.min(TOPIC_EVERY * 4 ** n, 30 * 60000));
+    };
     (async () => {
       const p = await recentPrompts(s);
-      if (!p?.recent?.length) return;
+      if (!p?.recent?.length) { failed(); return; }
       const claude = accounts(s.machine, "claude");
       const dir = (claude.find((x) => x.id === s.account) ?? claude[0])?.dir;
       if (!dir) return;
       const r = await helper("claude-tabname", [dir, p.recent.join(" | "), "6"], s.machine, { timeout: 40000 }).catch(() => null);
       const title = r?.code === 0 ? cleanTopic(r.stdout) : null;
-      if (!title) return;
+      if (!title) { failed(); return; }
+      this.topicFails.delete(s.sessionId);
       const kept = Object.entries(shared(TOPICS) ?? {}).sort((x, y) => y[1].at - x[1].at).slice(0, 99);
       setShared(TOPICS, { ...Object.fromEntries(kept), [s.sessionId]: { title, at: Date.now() } });
     })().catch(() => null).finally(() => { this.asking = false; });

@@ -7,6 +7,7 @@ export const heading = (t, text) => div().pt(6).pb(8).text_size(12).font_semibol
 
 // A heading with the section's action on the right (Add…), so it's there however long the list gets.
 export const headingRow = (t, text, action = null) => h_flex().w_full().items_center().gap(8)
+  .when(Boolean(action), (el) => el.pb(10)) // the button is taller than the heading: room before the text under it
   .child(div().flex_1().child(heading(t, text))).when(Boolean(action), (el) => el.child(action));
 
 export const about = (t, text) => div().pb(8).text_size(12.5).line_height("18px").text_color(t.dim).child(text);
