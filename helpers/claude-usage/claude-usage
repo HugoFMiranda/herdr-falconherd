@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# claude-usage <account> [config dir]: the account's usage limits, for the status bar.
+exec node "$(dirname "$(readlink -f "$0")")/claude-usage.mjs" "$@"

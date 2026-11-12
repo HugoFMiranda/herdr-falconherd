@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""herdr-md-browser <file>: the Markdown file as a web page (pandoc: highlighted code, Copy
+buttons) in a frameless browser window, updated live. md-view's and Markdown panes' Browser
+button runs this.
+
+It serves the page on 127.0.0.1 (a random port) and renders again when the file changes; the
+page asks every second and reloads at the same scroll position. The server ends itself once no
+page has asked for 20 s. Opening the same file again reuses its server.
+Shortcut: images given by relative paths don't show (the page isn't a file:// page any more)."""
+import hashlib, http.server, json, os, shutil, subprocess, sys, threading, time
+
+IDLE_S = 20
+HERE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "md-browser")
+CACHE = os.path.join(os.environ.get("HERDR_SESSION_CACHE") or os.path.expanduser("~/.cache/herdr-session"), "md-html")
+
+
+def render(md, out):
+    css = open(os.path.join(HERE, "style.css"), encoding="utf-8").read()
+    with open(out + ".css.html", "w", encoding="utf-8") as fh:
+        fh.write("<style>\n" + css + "\n</style>\n")
+    subprocess.run(["pandoc", "-f", "gfm", "-t", "html5", "-s", "--highlight-style=breezedark",
+                    "--metadata", "pagetitle=" + os.path.basename(md),
+                    "-H", out + ".css.html", "-H", os.path.join(HERE, "copy.html"), "-o", out + ".tmp", md], check=True)
+    os.replace(out + ".tmp", out)  # the server never sends a half-written page
+
+
+def stamp(md):
+    try:
+        s = os.stat(md)
+        return f"{s.st_mtime_ns}-{s.st_size}"
+    except FileNotFoundError:
+        return "gone"
+
+
+def open_window(url):
+    browser = next((shutil.which(b) for b in ("brave-browser", "microsoft-edge", "google-chrome", "chromium") if shutil.which(b)), None)
+    argv = [browser, f"--app={url}"] if browser else ["open" if sys.platform == "darwin" else "xdg-open", url]
+    subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def serve(md, html, portfile):
+    state = {"v": stamp(md), "asked": time.time()}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *_):
+            pass
+
+        def do_GET(self):
+            state["asked"] = time.time()
+            if self.path == "/v":
+                body, kind = state["v"].encode(), "text/plain"
+            elif self.path in ("/", "/index.html"):
+                body, kind = open(html, "rb").read(), "text/html; charset=utf-8"
+            else:
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", kind)
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    with open(portfile, "w", encoding="utf-8") as fh:
+        json.dump({"port": httpd.server_address[1], "pid": os.getpid()}, fh)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        while time.time() - state["asked"] < IDLE_S:
+            time.sleep(1)
+            v = stamp(md)
+            if v != state["v"]:
+                if v != "gone":
+                    try:
+                        render(md, html)
+                    except subprocess.CalledProcessError:
+                        continue
+                state["v"] = v
+    finally:
+        httpd.shutdown()
+        os.unlink(portfile)
+
+
+def main():
+    if len(sys.argv) != 2:
+        sys.exit("usage: herdr-md-browser <file.md>")
+    md = os.path.realpath(sys.argv[1])
+    os.makedirs(CACHE, exist_ok=True)
+    key = hashlib.sha1(md.encode()).hexdigest()[:12]
+    html, portfile = os.path.join(CACHE, key + ".html"), os.path.join(CACHE, key + ".port")
+    try:  # a server for this file already runs: just open another window on it
+        p = json.load(open(portfile, encoding="utf-8"))
+        os.kill(p["pid"], 0)
+        open_window(f"http://127.0.0.1:{p['port']}/")
+        return
+    except (OSError, ValueError, KeyError):
+        pass
+    render(md, html)
+    if os.fork():  # the parent returns at once (the Browser button waits for it)
+        for _ in range(50):
+            if os.path.exists(portfile):
+                break
+            time.sleep(0.05)
+        open_window(f"http://127.0.0.1:{json.load(open(portfile, encoding="utf-8"))['port']}/")
+        return
+    os.setsid()
+    devnull = os.open(os.devnull, os.O_RDWR)
+    for fd in (0, 1, 2):
+        os.dup2(devnull, fd)
+    serve(md, html, portfile)
+
+
+if __name__ == "__main__":
+    main()

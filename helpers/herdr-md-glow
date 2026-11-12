@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# herdr-md-glow <file>: the terminal inside md-view's window and Markdown panes. glow renders the
+# file into less, which opens at the top. When the file changes or the width does, it renders
+# again into the same file and presses R (less reloads it in place, keeping the scroll position).
+# less keeps no hold on the mouse, so the wheel scrolls and dragging selects text as usual.
+f="$1"
+glow=$(command -v glow || echo "$HOME/.local/bin/glow")
+tmp=$(mktemp); trap 'rm -f "$tmp"; kill 0' EXIT
+sleep 0.4   # the window sets the real size just after the terminal starts
+stamp() { stat -c %Y-%s "$f" 2>/dev/null || stat -f %m-%z "$f" 2>/dev/null || echo gone; }
+render() {
+  cols=$(tput cols 2>/dev/null || echo 100)
+  local w=$(( cols > 124 ? 120 : cols - 4 ))
+  # In place (same inode): less rereads this file on R.
+  if [ -f "$f" ]; then CLICOLOR_FORCE=1 "$glow" -s dark -w "$w" "$f" > "$tmp" 2>&1
+  else echo "  This file is no longer available." > "$tmp"; fi
+}
+render
+(
+  m=$(stamp) c=$cols
+  while sleep 0.5; do
+    [ "$(stamp)" = "$m" ] && [ "$(tput cols)" = "$c" ] && continue
+    m=$(stamp); render; c=$cols
+    hc keys "$HC_TERMINAL_ID" R >/dev/null 2>&1
+  done
+) </dev/tty &
+less -R -c -~ '-Ps ' "$tmp"   # q closes the viewer

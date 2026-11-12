@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# herdr-brief <main terminal> <<'BRIEF' … BRIEF : deliver a side chat's brief to its main conversation.
+# The brief is read from stdin (or a second argument) and sent verbatim. If main is blocked (a question
+# or dialog: Enter would pick an option), it returns at once and a detached process sends when free.
+# State for the side chat's header: ~/.cache/herdr-session/briefs/<this terminal>.json
+set -uo pipefail
+root="${HERDR_SESSION_CACHE:-$HOME/.cache/herdr-session}"; mkdir -p "$root/briefs"
+poll="${HERDR_BRIEF_POLL:-3}"
+
+write() { # write <file> <state> <main> [error]
+  python3 - "$1" "$2" "$3" "${4:-}" <<'PY'
+import json, os, sys, time
+path, state, main, err = sys.argv[1:5]
+rec = {"state": state, "main": main, "at": int(time.time() * 1000)}
+if err: rec["error"] = err
+open(path + ".tmp", "w").write(json.dumps(rec)); os.replace(path + ".tmp", path)
+PY
+}
+
+# main's state: "gone", "ended", "blocked" or "free"
+check() {
+  local info; info=$(hc get "$1" 2>/dev/null) || { echo gone; return; }
+  printf '%s' "$info" | python3 -c 'import json,sys
+d=json.load(sys.stdin)
+print("ended" if d.get("state")!="live" else "blocked" if (d.get("status") or {}).get("state")=="blocked" else "free")'
+}
+
+deliver() { # deliver <main> <brief file> <state file>: wait while blocked (30 min max), then send
+  local main="$1" brief="$2" file="$3" deadline=$(( $(date +%s) + 30 * 60 )) st
+  while :; do
+    st=$(check "$main")
+    case "$st" in
+      gone|ended) write "$file" failed "$main" "main conversation $main has ended"; rm -f "$brief"; return 1 ;;
+      free) break ;;
+    esac
+    [ "$(date +%s)" -lt "$deadline" ] || { write "$file" failed "$main" "main stayed blocked for 30 minutes"; rm -f "$brief"; return 1; }
+    sleep "$poll"
+  done
+  hc send "$main" "$(cat "$brief")" >/dev/null || { write "$file" failed "$main" "hc send failed"; rm -f "$brief"; return 1; }
+  write "$file" sent "$main"; rm -f "$brief"
+}
+
+if [ "${1:-}" = "--deliver" ]; then deliver "$2" "$3" "$4"; exit; fi
+
+main="${1:?usage: herdr-brief <main terminal> <<'BRIEF' … BRIEF}"
+file="$root/briefs/${HC_TERMINAL_ID:-unknown}.json"
+brief=$(mktemp "$root/briefs/.brief.XXXXXX")
+if [ $# -ge 2 ]; then printf '%s' "$2" > "$brief"; else cat > "$brief"; fi
+[ -s "$brief" ] || { rm -f "$brief"; echo "herdr-brief: empty brief" >&2; exit 2; }
+
+case "$(check "$main")" in
+  gone|ended) write "$file" failed "$main" "main conversation $main has ended"; rm -f "$brief"; echo "herdr-brief: $main has ended" >&2; exit 1 ;;
+  free) deliver "$main" "$brief" "$file" && echo "Brief sent to $main." ;;
+  blocked)
+    write "$file" waiting "$main"
+    setsid -f "$0" --deliver "$main" "$brief" "$file" </dev/null >/dev/null 2>&1
+    echo "Main is waiting on the user; the brief will be sent to $main when it is free." ;;
+esac

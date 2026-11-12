@@ -1,0 +1,14 @@
+{
+  "layout:falconherd": {
+    "alt-down": "falcon-roost.next",
+    "alt-up": "falcon-roost.prev",
+    "ctrl-shift-pagedown": "falcon-roost.next",
+    "ctrl-shift-pageup": "falcon-roost.prev",
+    "ctrl-space shift-n": "falcon-roost.next",
+    "ctrl-space shift-p": "falcon-roost.prev",
+    "ctrl-shift-g": "falcon-status.usage",
+    "ctrl-shift-s": "falcon-hood.side",
+    "ctrl-shift-d": "falcon-hood.fork",
+    "ctrl-shift-m": "falcon-hood.send"
+  }
+}

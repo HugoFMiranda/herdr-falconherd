@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="496" height="248" viewBox="0 0 248 124">
+  <!-- The Falconherd layout, drawn (no real content): space folders and machines in the sidebar, the
+       agents list under them, account-colored tabs, the session chip on the pane, usage in the status bar. -->
+  <rect width="248" height="124" rx="7" fill="#1d2025"/>
+  <!-- sidebar -->
+  <rect x="0" y="0" width="64" height="124" rx="7" fill="#22262c"/>
+  <rect x="63.5" y="0" width="1" height="124" fill="#30343b"/>
+  <rect x="7" y="8" width="22" height="3" rx="1.5" fill="#d7dae0"/>
+  <rect x="7" y="19" width="18" height="2.5" rx="1.25" fill="#6b717c"/>
+  <rect x="7" y="26" width="5" height="5" rx="1.5" fill="#14b8a6"/>
+  <rect x="15" y="27.2" width="28" height="2.5" rx="1.25" fill="#aab0ba"/>
+  <rect x="11" y="34" width="5" height="5" rx="1.5" fill="#3b82f6"/>
+  <rect x="19" y="35.2" width="24" height="2.5" rx="1.25" fill="#8c929c"/>
+  <rect x="7" y="44" width="5" height="4" rx="1" fill="#f59e0b"/>
+  <rect x="15" y="44.7" width="16" height="2.5" rx="1.25" fill="#f59e0b"/>
+  <rect x="7" y="62" width="20" height="2.5" rx="1.25" fill="#6b717c"/>
+  <rect x="7" y="69" width="5" height="4" rx="1" fill="#a855f7"/>
+  <rect x="15" y="69.7" width="32" height="2.5" rx="1.25" fill="#d7dae0"/>
+  <rect x="7" y="77" width="5" height="4" rx="1" fill="#3b82f6"/>
+  <rect x="15" y="77.7" width="26" height="2.5" rx="1.25" fill="#aab0ba"/>
+  <rect x="7" y="85" width="5" height="4" rx="1" fill="#94a3b8"/>
+  <rect x="15" y="85.7" width="22" height="2.5" rx="1.25" fill="#8c929c"/>
+  <rect x="7" y="113" width="18" height="2.5" rx="1.25" fill="#6b717c"/>
+  <!-- tab bar -->
+  <rect x="70" y="5" width="40" height="11" rx="3" fill="#2c3037" stroke="#3a3f47" stroke-width="0.6"/>
+  <rect x="74" y="8.5" width="5" height="4" rx="1" fill="#a855f7"/>
+  <rect x="82" y="9.3" width="22" height="2.5" rx="1.25" fill="#d7dae0"/>
+  <rect x="114" y="8.5" width="5" height="4" rx="1" fill="#3b82f6"/>
+  <rect x="122" y="9.3" width="18" height="2.5" rx="1.25" fill="#8c929c"/>
+  <rect x="146" y="8.5" width="5" height="4" rx="1" fill="#f59e0b"/>
+  <rect x="154" y="9.3" width="14" height="2.5" rx="1.25" fill="#8c929c"/>
+  <rect x="214" y="8.8" width="26" height="3.5" rx="1.75" fill="#3a3f47"/>
+  <!-- pane: header with the session chip, a conversation -->
+  <rect x="69.5" y="20.5" width="173" height="91" rx="4" fill="#1a1d21" stroke="#2f343b" stroke-width="0.8"/>
+  <rect x="74" y="25" width="5" height="4" rx="1" fill="#a855f7"/>
+  <rect x="82" y="25.8" width="24" height="2.5" rx="1.25" fill="#aab0ba"/>
+  <rect x="200" y="24" width="38" height="6" rx="2" fill="#a855f7" fill-opacity="0.18" stroke="#a855f7" stroke-opacity="0.45" stroke-width="0.6"/>
+  <rect x="204" y="26" width="5" height="2" rx="1" fill="#a855f7"/>
+  <rect x="212" y="26" width="22" height="2" rx="1" fill="#d7dae0"/>
+  <rect x="69.5" y="33" width="173" height="0.6" fill="#2f343b"/>
+  <rect x="76" y="40" width="90" height="2.5" rx="1.25" fill="#d7dae0"/>
+  <rect x="76" y="47" width="128" height="2.5" rx="1.25" fill="#8c929c"/>
+  <rect x="76" y="54" width="110" height="2.5" rx="1.25" fill="#8c929c"/>
+  <rect x="76" y="61" width="70" height="2.5" rx="1.25" fill="#8c929c"/>
+  <rect x="76" y="71" width="4" height="2.5" rx="1.25" fill="#22c55e"/>
+  <rect x="83" y="71" width="60" height="2.5" rx="1.25" fill="#aab0ba"/>
+  <rect x="76" y="78" width="118" height="2.5" rx="1.25" fill="#8c929c"/>
+  <rect x="76" y="85" width="96" height="2.5" rx="1.25" fill="#8c929c"/>
+  <rect x="74" y="96" width="164" height="10" rx="2.5" fill="#22262c" stroke="#30343b" stroke-width="0.6"/>
+  <rect x="78" y="99.8" width="40" height="2.5" rx="1.25" fill="#6b717c"/>
+  <!-- status bar: model · effort, account, usage -->
+  <rect x="70" y="116" width="34" height="2.5" rx="1.25" fill="#aab0ba"/>
+  <circle cx="160" cy="117.3" r="1.6" fill="#a855f7"/>
+  <rect x="164" y="116" width="20" height="2.5" rx="1.25" fill="#aab0ba"/>
+  <rect x="190" y="116" width="20" height="2.5" rx="1.25" fill="#30343b"/>
+  <rect x="190" y="116" width="5" height="2.5" rx="1.25" fill="#22c55e"/>
+  <rect x="216" y="116" width="24" height="2.5" rx="1.25" fill="#30343b"/>
+  <rect x="216" y="116" width="9" height="2.5" rx="1.25" fill="#22c55e"/>
+</svg>

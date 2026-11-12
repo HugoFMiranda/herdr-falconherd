@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""agent-transcript-md <claude|codex> <log.jsonl> <out.md>: a conversation as markdown, for handing it
+to another agent. Keeps what was asked and said, one line per tool call; leaves out tool output,
+system/developer text and reasoning."""
+import json, os, sys
+
+def short(v, n=160):
+    s = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+    s = " ".join(s.split())
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+def tool_line(name, args):
+    if isinstance(args, str):
+        try: args = json.loads(args)
+        except Exception: pass
+    if isinstance(args, dict):
+        cmd = args.get("command") or args.get("cmd") or args.get("file_path") or args.get("path") or args.get("pattern") or args.get("description")
+        if isinstance(cmd, list): cmd = " ".join(map(str, cmd))
+        if cmd: return f"- {name}: {short(cmd)}"
+    return f"- {name}" + (f": {short(args)}" if args else "")
+
+def claude_turns(lines):
+    for d in lines:
+        msg = d.get("message") or {}
+        c = msg.get("content")
+        if d.get("type") == "user":
+            if isinstance(c, str) and c.strip(): yield "User", [c.strip()]
+            elif isinstance(c, list):
+                texts = [x.get("text", "") for x in c if isinstance(x, dict) and x.get("type") == "text" and x.get("text", "").strip()]
+                if texts: yield "User", texts
+        elif d.get("type") == "assistant" and isinstance(c, list):
+            out = []
+            for x in c:
+                if not isinstance(x, dict): continue
+                if x.get("type") == "text" and x.get("text", "").strip(): out.append(x["text"].strip())
+                elif x.get("type") == "tool_use": out.append(tool_line(x.get("name", "tool"), x.get("input")))
+            if out: yield "Assistant", out
+
+def codex_turns(lines):
+    for d in lines:
+        if d.get("type") != "response_item": continue
+        p = d.get("payload") or {}
+        t = p.get("type")
+        if t == "message" and p.get("role") in ("user", "assistant"):
+            texts = [x.get("text", "").strip() for x in p.get("content") or [] if isinstance(x, dict) and x.get("text", "").strip()]
+            if texts: yield ("User" if p["role"] == "user" else "Assistant"), texts
+        elif t in ("function_call", "custom_tool_call", "local_shell_call"):
+            yield "Assistant", [tool_line(p.get("name", "tool"), p.get("arguments") or p.get("input") or p.get("action"))]
+
+def main(kind, src, out):
+    lines = []
+    for raw in open(src, encoding="utf-8", errors="replace"):
+        try: lines.append(json.loads(raw))
+        except Exception: pass
+    turns = claude_turns(lines) if kind == "claude" else codex_turns(lines)
+    md, last = [f"# Conversation handoff\n\nFrom a {kind.capitalize()} session. Tool calls are listed one per line; their output is left out.\n"], None
+    for who, parts in turns:
+        if who != last: md.append(f"\n## {who}\n"); last = who
+        md.append("\n".join(parts) + "\n")
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    with open(out + ".tmp", "w", encoding="utf-8") as fh: fh.write("\n".join(md))
+    os.replace(out + ".tmp", out)
+
+if __name__ == "__main__":
+    if len(sys.argv) != 4 or sys.argv[1] not in ("claude", "codex"):
+        sys.exit("usage: agent-transcript-md <claude|codex> <log.jsonl> <out.md>")
+    main(*sys.argv[1:])
