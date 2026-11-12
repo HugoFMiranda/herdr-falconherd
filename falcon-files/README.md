@@ -6,6 +6,8 @@ a file or folder to another connected machine.
 
 ![Falcon Files](preview.png)
 
+*Git colors in the tree (added, modified), and a file's menu: copy its path, or send it to another machine.*
+
 ## Add it
 
 Ask the agent in Herdr:

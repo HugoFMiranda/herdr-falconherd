@@ -1,0 +1,8 @@
+{
+  "global": {
+    "ctrl-space a": "falcon-agents.attention",
+    "ctrl-space z": "falcon-agents.snooze",
+    "ctrl-space u": "falcon-agents.reopen",
+    "ctrl-space p": "falcon-agents.pin"
+  }
+}

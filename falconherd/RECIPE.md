@@ -41,7 +41,7 @@ Left to right: a 268px sidebar, then the work column.
   Then "N away" (settled tabs), + (the launcher), the side panels' buttons (Files, Changes,
   Insights when installed) and the window buttons.
 - **Panes**: 8px gaps, 10px radius, a 1px border; the focused pane's border takes the shown space's
-  color. Each pane has a 30px header (falcon-hood): account glyph and label chip, conversation name,
+  color. Each pane has a 30px header (falcon-header): account glyph and label chip, conversation name,
   the folder as `~/…`, the branch, where it came from ("fork of x", "side chat of y"), the machine
   badge, a session chip (click: copy), the context meter, sub-agents, and its state. On hover or
   focus a toolbar: Send to main, Continue on…, Side chat, Fork, split right and down, zoom, close.
@@ -114,18 +114,18 @@ The layout's own keys (`keys.json`, section `layout:falconherd`):
 
 ## Built from
 
-- **Layout tree**: `root` row → `sidebar` column (268px, min 44) [`brand` 46px falcon-roost
-  `part: top` (window_drag), `sidebar-lists` column (`spaces` falcon-roost `part: spaces`, `agents`
-  falcon-flock, each weight 1, min 90), `sidebar-footer` 41px falcon-roost `part: foot`] → `work`
-  column [`tabs` 42px falcon-perch, `work-body` row (`main` the active tab with falcon-hood as the
+- **Layout tree**: `root` row → `sidebar` column (268px, min 44) [`brand` 46px falcon-sidebar
+  `part: top` (window_drag), `sidebar-lists` column (`spaces` falcon-sidebar `part: spaces`, `agents`
+  falcon-agents, each weight 1, min 90), `sidebar-footer` 41px falcon-sidebar `part: foot`] → `work`
+  column [`tabs` 42px falcon-tabs, `work-body` row (`main` the active tab with falcon-header as the
   pane header; `panel` column 368px, min 280, a `panel-body` stack of falcon-files and
   falcon-changes), `status` 28px falcon-status]. Theme paper / atom-one-dark, no titlebar, canvas
   background, 1px border dividers, terminal padding 14×12.
-- **Mods**: falcon-roost (sidebar, three parts by `props.part`, plus its popups), falcon-flock
-  (agents), falcon-perch (tabs), falcon-hood (pane header), falcon-files, falcon-changes,
+- **Mods**: falcon-sidebar (sidebar, three parts by `props.part`, plus its popups), falcon-agents
+  (agents), falcon-tabs (tabs), falcon-header (pane header), falcon-files, falcon-changes,
   falcon-status (status bar), falcon-launch (the + popover), falcon-md (Markdown window),
-  falcon-roster (Accounts window). Each has `core.js`, the same shared pure helpers; perch, hood and
-  flock share `session.js` (which conversation runs in a terminal, and its readings).
+  falcon-accounts (Accounts window). Each has `core.js`, the same shared pure helpers; falcon-tabs, falcon-header and
+  falcon-agents share `session.js` (which conversation runs in a terminal, and its readings).
 - **Shipped mods used**: workspace-chrome's icons, picker (search), machine-add, worktree, Herdr's
   Settings (frame-settings); Herdr's `icons/claude.svg` and `icons/codex.svg` for those tools.
 - **herdr functions**: spaces, panes, agents, terminals, machines, layout, shared/setShared,
@@ -138,7 +138,7 @@ The layout's own keys (`keys.json`, section `layout:falconherd`):
   herdr-md-browser, claude-usage. It reads Claude Code's and Codex's session files in the accounts'
   config folders. claude-tabname and claude-usage call Claude (on the account's limits); nothing
   else reaches the network.
-- **Art**: shape glyphs for accounts in `mods/falcon-roster/glyphs/`, each mod's own small icons.
+- **Art**: shape glyphs for accounts in `mods/falcon-accounts/glyphs/`, each mod's own small icons.
 
 ## Watch out
 

@@ -44,7 +44,7 @@
           },
           "window_drag": true,
           "content": {
-            "mod": "falcon-roost",
+            "mod": "falcon-sidebar",
             "props": {
               "part": "top"
             }
@@ -62,7 +62,7 @@
               },
               "min": 90,
               "content": {
-                "mod": "falcon-roost",
+                "mod": "falcon-sidebar",
                 "props": {
                   "part": "spaces"
                 }
@@ -76,7 +76,7 @@
               },
               "min": 90,
               "content": {
-                "mod": "falcon-flock"
+                "mod": "falcon-agents"
               }
             }
           ]
@@ -88,7 +88,7 @@
             "px": 41
           },
           "content": {
-            "mod": "falcon-roost",
+            "mod": "falcon-sidebar",
             "props": {
               "part": "foot"
             }
@@ -109,7 +109,7 @@
           },
           "window_drag": true,
           "content": {
-            "mod": "falcon-perch"
+            "mod": "falcon-tabs"
           }
         },
         {
@@ -138,7 +138,7 @@
                   },
                   "header": {
                     "content": {
-                      "mod": "falcon-hood"
+                      "mod": "falcon-header"
                     },
                     "height": 30,
                     "position": "top",

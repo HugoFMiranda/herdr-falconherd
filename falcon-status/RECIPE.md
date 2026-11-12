@@ -24,9 +24,9 @@ agents count on the left.
 ## Built from
 
 - Block: `{ "mod": "falcon-status" }`.
-- Herdr: focused, panes, agents, exec / helper (claude-usage), openOverlay (its menus, falcon-roster),
+- Herdr: focused, panes, agents, exec / helper (claude-usage), openOverlay (its menus, falcon-accounts),
   keys, nextCommand.
-- Mods shipped beside it (not placed in a layout): falcon-roster (the Accounts window: accounts, the + menu's entries, Titles).
+- Mods shipped beside it (not placed in a layout): falcon-accounts (the Accounts window: accounts, the + menu's entries, Titles).
 
 ## Watch out
 

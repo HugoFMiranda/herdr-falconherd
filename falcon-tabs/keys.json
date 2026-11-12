@@ -1,0 +1,10 @@
+{
+  "global": {
+    "ctrl-space r": "falcon-tabs.regenerate",
+    "ctrl-space l": "falcon-tabs.last",
+    "alt-shift-left": "falcon-tabs.move-left",
+    "alt-shift-right": "falcon-tabs.move-right",
+    "ctrl-space f": "falcon-tabs.files",
+    "ctrl-space c": "falcon-tabs.changes"
+  }
+}

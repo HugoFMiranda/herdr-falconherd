@@ -2,13 +2,14 @@
 // machine). The header: the branch (a click switches or creates one), ahead/behind, and fetch, pull,
 // push, stash and unstash. Then two lists, Staged and Changes: a checkbox stages or unstages a file,
 // its +/− counts, and a click opens its diff right under it. On hover: open it in Files, copy its
-// path, discard (asked first). At the bottom: the message, Commit (the staged ones, or everything
-// when nothing is staged) and Commit & push.
+// path, discard (asked first). The lists show as a flat list (each file's folder dimmed beside it) or a
+// folder tree (folders fold; fold all / unfold all), as last picked. At the bottom: the message,
+// Commit (the staged ones, or everything when nothing is staged) and Commit & push.
 // Popup of this mod: props.branchMenu ({ root, on, current }).
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, setShared, run, props, openOverlay, closeOverlay, notify, layout } from "herdr";
-import { modShown, changedFiles, numberDiff } from "./core.js";
+import { modShown, changedFiles, numberDiff, changeTree } from "./core.js";
 
 const MOD = "falcon-changes";
 const OWN = (name) => `mods/falcon-changes/${name}.svg`;
@@ -18,6 +19,10 @@ const HERDR = (name) => `mods/workspace-chrome/${name}.svg`;
 const READ = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "diff.autoRefreshIndex=false"];
 const MAX_FILES = 1000, MAX_LINES = 600;
 const statusColor = (t, s) => (s === "A" ? t.ansi2 : s === "D" || s === "U" ? t.ansi1 : t.ansi3);
+// The view picked last (list or tree), kept in this mod's storage.
+const VIEW_KEY = "falcon-changes.view";
+const savedView = () => { try { return localStorage.getItem(VIEW_KEY) === "tree"; } catch { return false; } };
+const saveView = (tree) => { try { localStorage.setItem(VIEW_KEY, tree ? "tree" : "list"); } catch { /* not kept: still switches */ } };
 const lineCount = (text) => (text ? text.split("\n").length - Number(text.endsWith("\n")) : 0);
 
 function where() {
@@ -35,6 +40,8 @@ export default class FalconChanges extends View {
     this.open = null;      // the file whose diff shows: { path, side, rows }
     this.hot = null;
     this.asking = null;    // a discard being asked about
+    this.tree = savedView(); // a folder tree, else a flat list
+    this.folded = new Set(); // folder ids ("<side>:<path>") shown shut
     this.message = InputState.new({ placeholder: "What changed" });
     this.message.on("change", (_e, cx) => cx.notify());
     this.message.on("submit", (_e, cx) => this.commit(cx, false));
@@ -213,7 +220,8 @@ export default class FalconChanges extends View {
       .child(div().flex_1().min_w(0).truncate().child(text));
   }
 
-  fileRow(t, f) {
+  // depth: its place in the tree (null: the flat list, with its folder dimmed beside the name).
+  fileRow(t, f, depth = null) {
     const id = `${f.side}:${f.path}`;
     const parts = f.path.split("/"), name = parts.pop();
     const open = this.open?.path === f.path && this.open?.side === f.side;
@@ -226,7 +234,7 @@ export default class FalconChanges extends View {
         .child(div().id(`fc-no-${id}`).px(9).h(22).flex().items_center().rounded(6).border_1().border_color(t.input).text_size(11.5).cursor_pointer()
           .on_click((_e, cx) => { cx.stop_propagation(); this.asking = null; cx.notify(); }).child("Keep"));
     }
-    const row = h_flex().id(`fc-${id}`).h(30).flex_none().px(8).gap(8).items_center().rounded(7).cursor_pointer()
+    const row = h_flex().id(`fc-${id}`).h(30).flex_none().pl(depth === null ? 8 : 8 + depth * 16).pr(8).gap(8).items_center().rounded(7).cursor_pointer()
       .when(open, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover))
       .on_hover((h, cx) => { const next = h ? id : this.hot === id ? null : this.hot; if (next !== this.hot) { this.hot = next; cx.notify(); } })
       .on_click((_e, cx) => this.toggleDiff(f, cx))
@@ -234,7 +242,7 @@ export default class FalconChanges extends View {
       .child(div().w(12).flex_none().text_size(11).font_semibold().text_color(statusColor(t, f.status)).child(f.status))
       .child(h_flex().flex_1().min_w(0).gap(0)
         .child(div().min_w(0).flex_shrink(0).max_w(240).truncate().child(name))
-        .when(parts.length > 0, (e) => e.child(div().ml(6).min_w(0).flex_shrink(1).truncate().text_size(11.5).text_color(t.dim).child(parts.join("/")))))
+        .when(depth === null && parts.length > 0, (e) => e.child(div().ml(6).min_w(0).flex_shrink(1).truncate().text_size(11.5).text_color(t.dim).child(parts.join("/")))))
       .when(hot, (e) => e
         .child(this.tool(t, `fc-open-${id}`, HERDR("file-text"), "Open in Files", () => this.openInFiles(f)))
         .child(this.tool(t, `fc-copy-${id}`, OWN("copy"), "Copy path", (cx) => cx.write_to_clipboard(f.path)))
@@ -248,6 +256,23 @@ export default class FalconChanges extends View {
       .when(!rows, (e) => e.child(div().px(10).py(4).text_color(t.dim).child("Reading the diff…")))
       .children((rows ?? []).map((r) => this.diffLine(t, r)))
       .when(Boolean(this.open.more), (e) => e.child(div().px(10).pt(4).text_size(11).text_color(t.dim).child(`Showing the first ${MAX_LINES} lines`)))];
+  }
+
+  dirRow(t, r) {
+    const shut = this.folded.has(r.id);
+    return h_flex().id(`fc-dir-${r.id}`).h(26).flex_none().pl(8 + r.depth * 16).pr(8).gap(6).items_center().rounded(7).cursor_pointer()
+      .text_color(t.muted).hover((s) => s.bg(t.hover))
+      .on_click((_e, cx) => { const next = new Set(this.folded); shut ? next.delete(r.id) : next.add(r.id); this.folded = next; cx.notify(); })
+      .child(svg(HERDR(shut ? "chevron-right" : "chevron-down")).size(11).flex_none().text_color(t.dim))
+      .child(svg(HERDR("folder")).size(13).flex_none())
+      .child(div().flex_1().min_w(0).truncate().child(r.name))
+      .child(div().flex_none().text_size(11).text_color(t.dim).child(String(r.count)));
+  }
+
+  // A section's rows: a flat list, or its folder tree.
+  sectionRows(t, side, files) {
+    if (!this.tree) return files.flatMap((f) => this.fileRow(t, f));
+    return changeTree(files, side, this.folded).flatMap((r) => (r.kind === "dir" ? [this.dirRow(t, r)] : this.fileRow(t, r.file, r.depth)));
   }
 
   // ----- the branch switcher popup
@@ -328,6 +353,17 @@ export default class FalconChanges extends View {
     const add = this.files.reduce((n, f) => n + f.add, 0), del = this.files.reduce((n, f) => n + f.del, 0);
     const ready = Boolean(this.message.value().trim() && this.root && !busy && !this.loading && this.files.length);
     const net = { timeout: 120000 };
+    const dirIds = this.tree ? [...changeTree(staged, "staged", new Set()), ...changeTree(changes, "changes", new Set())].filter((r) => r.kind === "dir").map((r) => r.id) : [];
+    const allShut = dirIds.length > 0 && dirIds.every((id) => this.folded.has(id));
+    const viewTools = [
+      dirIds.length > 0 && this.tool(t, "fc-fold-all", OWN(allShut ? "unfold" : "fold"), allShut ? "Unfold every folder" : "Fold every folder", (cx) => {
+        this.folded = allShut ? new Set([...this.folded].filter((id) => !dirIds.includes(id))) : new Set([...this.folded, ...dirIds]);
+        cx.notify();
+      }),
+      this.tool(t, "fc-view", OWN(this.tree ? "list" : "tree"), this.tree ? "Show as a list" : "Show as a folder tree", (cx) => {
+        this.tree = !this.tree; saveView(this.tree); cx.notify();
+      }),
+    ].filter(Boolean);
     const headTool = (id, icon, label, tip, action, show = true) => !show ? null : h_flex().id(id).h(24).px(6).gap(4).flex_none().items_center().rounded(6)
       .text_size(11.5).text_color(busy ? t.dim : t.muted).tooltip(tip).when(!busy, (e) => e.cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground)))
       .on_click((_e, cx) => { if (!busy) action(cx); }).child(svg(icon).size(12)).when(Boolean(label), (e) => e.child(label));
@@ -335,7 +371,7 @@ export default class FalconChanges extends View {
       h_flex().id(`fc-sec-${side}`).h(28).flex_none().px(8).gap(8).items_center().text_size(11).font_semibold().text_color(t.dim)
         .child(this.checkbox(t, `fc-all-${side}`, side === "staged", side === "staged" ? "Unstage all" : "Stage all", (cx) => this.setAll(cx, side !== "staged")))
         .child(div().child(label.toUpperCase())).child(div().child(String(files.length))),
-      ...files.flatMap((f) => this.fileRow(t, f)),
+      ...this.sectionRows(t, side, files),
     ];
     const button = (id, label, primary, action) => div().id(id).h(32).px(12).flex().flex_none().items_center().rounded(8).text_size(12)
       .bg(ready ? (primary ? t.solid : t.raised) : t.raised).text_color(ready ? (primary ? t.solid_foreground : t.foreground) : t.dim)
@@ -360,8 +396,9 @@ export default class FalconChanges extends View {
           headTool("fc-stash", OWN("stash"), b?.stashes ? String(b.stashes) : null, "Stash every change (new files too)", (cx) => this.act(cx, "Stash", [["stash", "push", "-u"]]), this.files.length > 0),
           headTool("fc-unstash", OWN("unstash"), null, `Apply the last stash and drop it (${b?.stashes} stashed)`, (cx) => this.act(cx, "Unstash", [["stash", "pop"]]), b?.stashes > 0),
         ].filter(Boolean))))
-      .when(this.files.length > 0, (e) => e.child(h_flex().h(26).flex_none().px(14).gap(8).items_center().text_size(11).text_color(t.dim)
-        .child(`${new Set(this.files.map((f) => f.path)).size} files`).child(div().text_color(t.ansi2).child(`+${add}`)).child(div().text_color(t.ansi1).child(`−${del}`))))
+      .when(this.files.length > 0, (e) => e.child(h_flex().h(26).flex_none().pl(14).pr(10).gap(8).items_center().text_size(11).text_color(t.dim)
+        .child(`${new Set(this.files.map((f) => f.path)).size} files`).child(div().text_color(t.ansi2).child(`+${add}`)).child(div().text_color(t.ansi1).child(`−${del}`))
+        .child(div().flex_1()).children(viewTools)))
       .child(v_flex().id("fc-list").flex_1().min_h(0).overflow_y_scrollbar().p(6)
         .children([...section("staged", "Staged", staged), ...section("changes", "Changes", changes)])
         .when(!this.files.length, (e) => e.child(div().p(8).text_color(t.dim).child(this.error || (this.loading ? "Reading changes…" : this.root ? "Nothing changed" : "No folder"))))

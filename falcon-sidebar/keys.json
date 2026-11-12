@@ -1,0 +1,10 @@
+{
+  "global": {
+    "alt-down": "falcon-sidebar.next",
+    "alt-up": "falcon-sidebar.prev",
+    "ctrl-shift-pagedown": "falcon-sidebar.next",
+    "ctrl-shift-pageup": "falcon-sidebar.prev",
+    "ctrl-space shift-n": "falcon-sidebar.next",
+    "ctrl-space shift-p": "falcon-sidebar.prev"
+  }
+}

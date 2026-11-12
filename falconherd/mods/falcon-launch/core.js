@@ -16,10 +16,15 @@ export const toolOf = (account) => (typeof account?.tool === "string" && TOOL_ID
 const titleCase = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 // A tool's facts: a known one's, else a program's (named by the account's toolName, else its id).
 export const toolInfo = (tool, name = null) => TOOLS[tool] ?? Object.freeze({
-  id: tool, name: name || titleCase(tool), dir: null, bin: tool, env: null, example: `${tool}-work`, glyph: "mods/falcon-roster/glyphs/terminal.svg", known: false,
+  id: tool, name: name || titleCase(tool), dir: null, bin: tool, env: null, example: `${tool}-work`, glyph: "mods/falcon-accounts/glyphs/terminal.svg", known: false,
 });
 export const accountTool = (a) => toolInfo(toolOf(a), a?.toolName);
 // "Claude Work", "Codex", "Gemini Work" (an account named after its tool keeps its name).
+// An icon drawn as it is (an image), not in the account's color: Herdr's Codex icon is a picture (a
+// white tile under a gradient mark) that tinting turns into a plain square. Every other account icon
+// is one color.
+export const isPicture = (icon) => icon === "icons/codex.svg";
+
 export const accountTitle = (a) => {
   const name = accountTool(a).name;
   return a.label === name || a.label.startsWith(`${name} `) ? a.label : `${name} ${a.label}`;
@@ -52,12 +57,12 @@ export const PROFILE_SAVED = "sessions.profile-saved";
 
 // Where Settings opens (an openOverlay spec). Here: this repo's copy of Herdr's Settings with the
 // Accounts and + menu sections in it. The shared Falconherd (export-gallery swaps this line) has
-// Herdr's own Settings, and the Accounts / + menu sections in a window of their own (falcon-roster).
-export const SETTINGS_HOME = Object.freeze({ general: "frame-settings", accounts: "falcon-roster" });
+// Herdr's own Settings, and the Accounts / + menu sections in a window of their own (falcon-accounts).
+export const SETTINGS_HOME = Object.freeze({ general: "frame-settings", accounts: "falcon-accounts" });
 export function settingsOverlay(section, home = SETTINGS_HOME) {
   const ours = section === "accounts" || section === "menu" || section === "titles";
   const mod = ours ? home.accounts : home.general;
-  if (mod === "falcon-roster") return { mod, kind: "window", key: "falcon-roster", width: 760, height: 620, props: { section } };
+  if (mod === "falcon-accounts") return { mod, kind: "window", key: "falcon-accounts", width: 760, height: 620, props: { section } };
   return { mod, kind: "dialog", width: 880, height: 620, props: { section } };
 }
 
@@ -591,7 +596,7 @@ export function accountId(label, taken) {
 export const ACCOUNT_GLYPHS = Object.freeze([
   ["briefcase", "Work"], ["home", "Home"], ["star", "Star"], ["bolt", "Bolt"], ["heart", "Heart"], ["flask", "Lab"],
   ["code", "Code"], ["circle", "Circle"], ["hexagon", "Hexagon"], ["cloud", "Cloud"], ["spark", "Spark"], ["terminal", "Terminal"],
-].map(([name, label]) => Object.freeze({ path: `mods/falcon-roster/glyphs/${name}.svg`, label, tool: null })).concat([
+].map(([name, label]) => Object.freeze({ path: `mods/falcon-accounts/glyphs/${name}.svg`, label, tool: null })).concat([
   Object.freeze({ path: "icons/claude.svg", label: "Claude", tool: "claude" }),
   Object.freeze({ path: "icons/codex.svg", label: "Codex", tool: "codex" }),
 ]));
@@ -767,7 +772,7 @@ export function keyLabel(binding, platform) {
   return String(binding ?? "").trim().split(/\s+/).filter(Boolean).map(stroke).join(" ");
 }
 
-// The tab bar (falcon-perch). A tab's title: its name, or (never named: "tb3") its program's.
+// The tab bar (falcon-tabs). A tab's title: its name, or (never named: "tb3") its program's.
 export const tabTitle = (tab, program) => `${/^tb\d+$/.test(tab?.name ?? "") ? program?.name ?? "Terminal" : tab.name}${tab?.zoomed ? " · zoomed" : ""}`;
 // "5m", "3h", "2d" ago (at least 1m).
 export const shortAgo = (ms) => (ms < 3600000 ? `${Math.max(1, Math.round(ms / 60000))}m` : ms < 86400000 ? `${Math.round(ms / 3600000)}h` : `${Math.round(ms / 86400000)}d`);
@@ -779,7 +784,7 @@ export function panelFor(memory, space, panels) {
   return want && panels.includes(want) ? want : null;
 }
 
-// The pane header (falcon-hood). A folder with home as "~".
+// The pane header (falcon-header). A folder with home as "~".
 export function homeLabel(cwd, home) {
   if (!cwd) return "";
   const c = String(cwd).replace(/\\/g, "/"), h = String(home ?? "").replace(/\\/g, "/").replace(/\/+$/, "");
@@ -796,9 +801,9 @@ export function originOf(labels) {
   return null;
 }
 
-// The agents list's filter chips (falcon-flock): one per account and per machine among the agents,
+// The agents list's filter chips (falcon-agents): one per account and per machine among the agents,
 // only for a kind with more than one value. items: { account: { id, label, color } | null, machine }.
-export function flockFacets(items) {
+export function agentsFacets(items) {
   const accounts = new Map(), machines = new Map();
   for (const it of items) {
     if (it.account) accounts.set(it.account.id, { key: `account:${it.account.id}`, label: it.account.label, color: it.account.color, count: (accounts.get(it.account.id)?.count ?? 0) + 1 });
@@ -808,7 +813,7 @@ export function flockFacets(items) {
   return [...(accounts.size > 1 ? accounts.values() : []), ...(machines.size > 1 ? machines.values() : [])];
 }
 // An item passes the chosen chips: for each kind chosen, it matches one of that kind's chips.
-export function flockMatches(item, chosen) {
+export function agentsMatches(item, chosen) {
   const kinds = { account: [], machine: [] };
   for (const key of chosen) { const [kind, value] = key.split(/:(.*)/s); kinds[kind]?.push(value); }
   if (kinds.account.length && !kinds.account.includes(item.account?.id ?? "\u0000")) return false;
@@ -864,6 +869,44 @@ export function transferDefault({ to, fromFolder, spaces, home }) {
   return to ? "Downloads" : `${home}/Downloads`;
 }
 
+// The changes panel's tree view: one section's files as rows, folders first (by name), then files.
+// A chain of folders holding only one folder shows as one ("docs/api"). A folder's id is
+// "<side>:<path>"; one in `folded` shows without what's in it. Rows: { kind: "dir", id, name, depth,
+// count } (count: files under it) or { kind: "file", file, depth }.
+export function changeTree(files, side, folded) {
+  const node = () => ({ dirs: new Map(), files: [] });
+  const root = node();
+  for (const f of files) {
+    const parts = f.path.split("/");
+    parts.pop();
+    let at = root;
+    for (const part of parts) {
+      if (!at.dirs.has(part)) at.dirs.set(part, node());
+      at = at.dirs.get(part);
+    }
+    at.files.push(f);
+  }
+  const count = (n) => n.files.length + [...n.dirs.values()].reduce((s, d) => s + count(d), 0);
+  const rows = [];
+  const walk = (at, depth, prefix) => {
+    for (const [first, child] of [...at.dirs].sort(([a], [b]) => a.localeCompare(b))) {
+      let name = first, sub = child;
+      while (sub.files.length === 0 && sub.dirs.size === 1) {
+        const [next, deeper] = [...sub.dirs][0];
+        name = `${name}/${next}`;
+        sub = deeper;
+      }
+      const path = prefix ? `${prefix}/${name}` : name;
+      const id = `${side}:${path}`;
+      rows.push({ kind: "dir", id, name, depth, count: count(sub) });
+      if (!folded.has(id)) walk(sub, depth + 1, path);
+    }
+    for (const file of [...at.files].sort((a, b) => a.path.localeCompare(b.path))) rows.push({ kind: "file", file, depth });
+  };
+  walk(root, 0, "");
+  return rows;
+}
+
 // The changes panel (falcon-changes). Files from `git status --porcelain=v1` entries and the line
 // counts per side (staged: index vs HEAD; changes: work tree vs index): one row per side a file has
 // changes on. status: M, A (new or untracked), D, U (conflict).
@@ -892,7 +935,7 @@ export function numberDiff(lines) {
   });
 }
 
-// The sidebar (falcon-roost). A smart folder's rules ("Collect spaces from"): comma-separated; a
+// The sidebar (falcon-sidebar). A smart folder's rules ("Collect spaces from"): comma-separated; a
 // rule starting with "/" is a path from the root, with "~" a path from any home (/home/x, /Users/x,
 // /root, C:/Users/x), else a folder name (or names/like/this) at any depth; "*" is any part of one
 // name. A rule takes that folder and everything in it. How far into the path the best rule reaches

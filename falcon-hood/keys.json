@@ -1,9 +1,0 @@
-{
-  "global": {
-    "ctrl-shift-s": "falcon-hood.side",
-    "ctrl-shift-d": "falcon-hood.fork",
-    "ctrl-shift-m": "falcon-hood.send",
-    "ctrl-space b": "falcon-hood.subagents",
-    "ctrl-space w": "falcon-hood.switch"
-  }
-}

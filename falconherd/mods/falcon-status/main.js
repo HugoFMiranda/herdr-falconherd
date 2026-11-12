@@ -380,7 +380,7 @@ export default class StatusSession extends View {
     const space = spaces().find(s => s.active);
     // Agents in settled tabs (snoozed ones are settled too) count as away, not as needing you.
     const settledTabs = new Set(spaces().flatMap((sp) => sp.tabs).filter((tab) => tab.settled).map((tab) => tab.id));
-    const snoozed = shared("flock.snoozed") ?? {};
+    const snoozed = shared("falcon-agents.snoozed") ?? {};
     const all = agents(), list = all.filter((a) => !settledTabs.has(a.tab) && !snoozed[a.address]), away = all.length - list.length;
     const needs = list.filter(a => a.status === "blocked").length;
     const label = (icon, text) => h_flex().gap(6).items_center().child(svg(`mods/workspace-chrome/${icon}.svg`).size(13)).child(text);

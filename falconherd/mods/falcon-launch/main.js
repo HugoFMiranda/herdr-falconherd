@@ -5,7 +5,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { theme, spaces, panes, knownAgents, run, openOverlay, closeOverlay, props, keys, window, shared, setShared, appHome, readTextFile } from "herdr";
-import { settingsOverlay, menuHidden, menuOrder, inMenuOrder, launcherLooks, launchMatches, keyLabel, joinCommand } from "./core.js";
+import { isPicture, settingsOverlay, menuHidden, menuOrder, inMenuOrder, launcherLooks, launchMatches, keyLabel, joinCommand } from "./core.js";
 
 // Each machine's last agents, shown at once while knownAgents() asks again.
 const SEEN = "falcon-launch.agents";
@@ -85,7 +85,7 @@ export default class FalconLaunch extends View {
 
   icon(t, a, size) {
     const look = this.looks[a.key];
-    if (look) return svg(look.icon).size(size).flex_none().text_color(look.color);
+    if (look) return (isPicture(look.icon) ? image(look.icon).w(size).h(size).flex_none() : svg(look.icon).size(size).flex_none().text_color(look.color));
     if (!a.icon) return div().size(size).flex_none();
     return a.tint ? svg(a.icon).size(size).flex_none().text_color(t.foreground) : image(a.icon).w(size).h(size).flex_none();
   }

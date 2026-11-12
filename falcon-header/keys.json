@@ -1,0 +1,9 @@
+{
+  "global": {
+    "ctrl-shift-s": "falcon-header.side",
+    "ctrl-shift-d": "falcon-header.fork",
+    "ctrl-shift-m": "falcon-header.send",
+    "ctrl-space b": "falcon-header.subagents",
+    "ctrl-space w": "falcon-header.switch"
+  }
+}

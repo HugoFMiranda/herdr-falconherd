@@ -6,6 +6,8 @@ agents count on the left.
 
 ![Falcon Status](preview.png)
 
+*The model menu (a model and its effort, or continue on another account) over the bar: model · effort, the account and its plan, 5-hour and weekly usage.*
+
 ## Add it
 
 Ask the agent in Herdr:
@@ -14,7 +16,7 @@ Ask the agent in Herdr:
 Read ~/.config/herdr-app/AGENTS.md, then add this mod from <this repo's URL>/tree/main/falcon-status
 ```
 
-It ships with: falcon-roster (the Accounts window: accounts, the + menu's entries, Titles).
+It ships with: falcon-accounts (the Accounts window: accounts, the + menu's entries, Titles).
 
 ## Use
 

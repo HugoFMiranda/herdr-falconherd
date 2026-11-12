@@ -8,19 +8,25 @@ This is Falconherd with every mod in place, as its author uses it every day:
 
 ![Falconherd: every mod in place](falconherd/preview.png)
 
-- **Left, top: the sidebar** ([`falcon-roost`](falcon-roost/README.md)). Colored folders (here *Acme*,
-  collecting two projects by where they work) and spaces, grouped by machine once you have more than one: `web-app` has an agent that needs
-  you (the red 1), `acme-api` one that's working (the spinner).
-- **Left, bottom: the agents list** ([`falcon-flock`](falcon-flock/README.md)). Whoever needs you first; each
-  card has its tab's name and, with Titles → With activity, what the agent is doing right now.
-- **Top: the tab bar** ([`falcon-perch`](falcon-perch/README.md)). The space's tabs with their state, the `+`
-  launcher, and the Files and Changes panel buttons.
-- **Middle: the pane header** ([`falcon-hood`](falcon-hood/README.md)) over the agent: its account, folder and
-  branch, and (on hover) fork, side chat, send a brief.
-- **Right: the changes panel** ([`falcon-changes`](falcon-changes/README.md)), or the files panel
-  ([`falcon-files`](falcon-files/README.md)) with its button.
-- **Bottom: the status bar** ([`falcon-status`](falcon-status/README.md)): the focused agent's model, effort,
-  account and usage.
+Three accounts are set here, each with its color: Claude *Work* (blue), Claude *Personal* (purple)
+and *Codex* (teal), on two machines: this computer (green) and *devbox* (amber).
+
+- **Left, top: the sidebar** ([`falcon-sidebar`](falcon-sidebar/README.md)). Spaces by machine, in
+  colored folders (*Acme*, *Side projects*): `web-app` has an agent that needs you (the red 1),
+  `acme-api`, `recipes` and devbox's `ingest-worker` have agents at work (the spinners).
+- **Left, bottom: the agents list** ([`falcon-agents`](falcon-agents/README.md)). Chips to filter
+  by account or machine, whoever needs you first, then the ones at work: each card in its account's
+  color, with its tab's name and what the agent is doing right now (Titles → With activity); the
+  Codex one runs on devbox, and *Health endpoint* has two sub-agents running.
+- **Top: the tab bar** ([`falcon-tabs`](falcon-tabs/README.md)). The space's tabs in their
+  account's color with their state, the `+` launcher, and the Files and Changes panel buttons.
+- **Middle: the pane header** ([`falcon-header`](falcon-header/README.md)) over the agent: its
+  folder and branch, its account chip with the conversation's name, the context it has used, its
+  sub-agents (2 of 3 running) and, on hover, fork, side chat, send a brief.
+- **Right: the changes panel** ([`falcon-changes`](falcon-changes/README.md)), here with an inline
+  diff open (a list here; it also shows a folder tree), or the files panel ([`falcon-files`](falcon-files/README.md)) with its button.
+- **Bottom: the status bar** ([`falcon-status`](falcon-status/README.md)): the focused agent's model
+  and effort, its account and plan (*Work*, Max), and its 5-hour and weekly usage.
 
 Add it all with the `falconherd` folder, or take only the parts you want.
 
@@ -40,12 +46,12 @@ merges the keys, checks each mod and, for the layout, switches to it. Adding one
 | Folder | What it is |
 |---|---|
 | [`falconherd`](falconherd/README.md) | **The whole layout**: everything below, placed together, with its keys |
-| [`falcon-roost`](falcon-roost/README.md) | **Sidebar**: your machines, colored folders and spaces (repo and branch, agents working or needing you, worktrees), a filter, menus for each |
-| [`falcon-flock`](falcon-flock/README.md) | **Agents list**: who needs you first, each card in its account's color with what it's doing, snooze, settle, pin, reopen closed conversations |
-| [`falcon-perch`](falcon-perch/README.md) | **Tab bar**: tabs with their account's icon and state, drag, a tab menu with Regenerate title, the side panels' buttons, and the `+` launcher |
-| [`falcon-hood`](falcon-hood/README.md) | **Pane header**: the conversation's account, folder, branch, context and sub-agents; fork, side chat, send a brief, continue on another account |
+| [`falcon-sidebar`](falcon-sidebar/README.md) | **Sidebar**: your machines, colored folders and spaces (repo and branch, agents working or needing you, worktrees), a filter, menus for each |
+| [`falcon-agents`](falcon-agents/README.md) | **Agents list**: who needs you first, each card in its account's color with what it's doing, snooze, settle, pin, reopen closed conversations |
+| [`falcon-tabs`](falcon-tabs/README.md) | **Tab bar**: tabs with their account's icon and state, drag, a tab menu with Regenerate title, the side panels' buttons, and the `+` launcher |
+| [`falcon-header`](falcon-header/README.md) | **Pane header**: the conversation's account, folder, branch, context and sub-agents; fork, side chat, send a brief, continue on another account |
 | [`falcon-files`](falcon-files/README.md) | **Files panel**: a tree with git colors and a filter, a Markdown reader, and copy to another connected machine |
-| [`falcon-changes`](falcon-changes/README.md) | **Changes panel**: stage with checkboxes, inline diffs, branches, fetch / pull / push / stash, commit |
+| [`falcon-changes`](falcon-changes/README.md) | **Changes panel**: stage with checkboxes, a list or a folder tree, inline diffs, branches, fetch / pull / push / stash, commit |
 | [`falcon-status`](falcon-status/README.md) | **Status bar**: the focused agent's model and effort (menus), its account and plan, 5-hour and weekly usage |
 | [`helpers`](helpers/install.sh) | Optional small programs some features use (tab names, sub-agent pages, briefs, usage, Markdown rendering): `helpers/install.sh` links them into `~/.local/bin` |
 

@@ -1,23 +1,23 @@
 {
   "layout:falconherd": {
-    "alt-down": "falcon-roost.next",
-    "alt-up": "falcon-roost.prev",
-    "ctrl-shift-pagedown": "falcon-roost.next",
-    "ctrl-shift-pageup": "falcon-roost.prev",
-    "ctrl-space shift-n": "falcon-roost.next",
-    "ctrl-space shift-p": "falcon-roost.prev",
+    "alt-down": "falcon-sidebar.next",
+    "alt-up": "falcon-sidebar.prev",
+    "ctrl-shift-pagedown": "falcon-sidebar.next",
+    "ctrl-shift-pageup": "falcon-sidebar.prev",
+    "ctrl-space shift-n": "falcon-sidebar.next",
+    "ctrl-space shift-p": "falcon-sidebar.prev",
     "ctrl-shift-g": "falcon-status.usage",
-    "ctrl-shift-s": "falcon-hood.side",
-    "ctrl-shift-d": "falcon-hood.fork",
-    "ctrl-shift-m": "falcon-hood.send",
-    "ctrl-space r": "falcon-perch.regenerate",
-    "ctrl-space a": "falcon-flock.attention",
+    "ctrl-shift-s": "falcon-header.side",
+    "ctrl-shift-d": "falcon-header.fork",
+    "ctrl-shift-m": "falcon-header.send",
+    "ctrl-space r": "falcon-tabs.regenerate",
+    "ctrl-space a": "falcon-agents.attention",
     "ctrl-space s": "tab.settle",
-    "ctrl-space z": "falcon-flock.snooze",
-    "ctrl-space u": "falcon-flock.reopen",
-    "ctrl-space l": "falcon-perch.last",
-    "alt-shift-left": "falcon-perch.move-left",
-    "alt-shift-right": "falcon-perch.move-right",
+    "ctrl-space z": "falcon-agents.snooze",
+    "ctrl-space u": "falcon-agents.reopen",
+    "ctrl-space l": "falcon-tabs.last",
+    "alt-shift-left": "falcon-tabs.move-left",
+    "alt-shift-right": "falcon-tabs.move-right",
     "shift-pageup": {
       "command": "terminal.scroll",
       "args": {
@@ -48,11 +48,11 @@
         "id": "panel"
       }
     },
-    "ctrl-space f": "falcon-perch.files",
-    "ctrl-space c": "falcon-perch.changes",
-    "ctrl-space b": "falcon-hood.subagents",
-    "ctrl-space w": "falcon-hood.switch",
-    "ctrl-space p": "falcon-flock.pin",
+    "ctrl-space f": "falcon-tabs.files",
+    "ctrl-space c": "falcon-tabs.changes",
+    "ctrl-space b": "falcon-header.subagents",
+    "ctrl-space w": "falcon-header.switch",
+    "ctrl-space p": "falcon-agents.pin",
     "f11": "window.maximize"
   }
 }
