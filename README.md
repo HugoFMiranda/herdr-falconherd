@@ -24,7 +24,7 @@ and *Codex* (teal), on two machines: this computer (green) and *devbox* (amber).
   folder and branch, its account chip with the conversation's name, the context it has used, its
   sub-agents (2 of 3 running) and, on hover, fork, side chat, send a brief.
 - **Right: the changes panel** ([`falcon-changes`](falcon-changes/README.md)), here with an inline
-  diff open (a list here; it also shows a folder tree), or the files panel ([`falcon-files`](falcon-files/README.md)) with its button.
+  diff open in its folder tree (a list is a click away), or the files panel ([`falcon-files`](falcon-files/README.md)) with its button.
 - **Bottom: the status bar** ([`falcon-status`](falcon-status/README.md)): the focused agent's model
   and effort, its account and plan (*Work*, Max), and its 5-hour and weekly usage.
 
