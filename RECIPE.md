@@ -32,7 +32,7 @@ Left to right: a 268px sidebar, then the work column.
   - **Agents** (the other half): an "Agents N" header with a sort menu (by what needs you, or by space), filter chips (one
     per account and machine), then sections: Needs you, Done, Working, Idle, Snoozed, Settled, Recently
     closed (the last three folded at first). Each agent is a card with a 3px edge in its account's color, the account glyph and name,
-    the conversation title (Claude's title, else the space), the folder, how long it's been in its
+    the tab's name, optionally a line for what's happening (see Titles), the folder, how long it's been in its
     state, and its running sub-agents under it.
   - **Footer** (41px): Settings (a dot when an update is ready) and Add machine. On the rail, both
     stack (69px).
@@ -68,8 +68,15 @@ Left to right: a 268px sidebar, then the work column.
   `alt-up` / `alt-down` go through the spaces as shown.
 - **Folders** live in `~/.config/falconherd-folders.json` on each machine, so every screen showing a
   machine's spaces shows the same folders.
-- **Tabs**: drag to reorder, middle-click closes, right-click for the tab menu, the wheel steps
-  through tabs. Unnamed tabs get a 2-3 word name from the conversation (with the helpers).
+- **Tabs**: drag to reorder, middle-click closes, the wheel steps through tabs. Right-click: Rename,
+  Regenerate title (Claude Haiku names it from the conversation now), New tab, Close.
+- **Titles** (Accounts window → Titles; Herdr's way by default): tab names Herdr's or Claude Haiku's
+  (a tab is named from its conversation at 3 messages and again at 10, while it keeps that name; a
+  typed name is never replaced); agent cards with the tab's name only (Herdr's), or with a line under
+  it for what's happening: while the agent works, what it says it's doing (its OSC 7501 `msg`); between
+  replies, Claude Code's own name for the conversation or Claude Haiku's title for what it's doing now
+  (asked again after each reply, at most once a minute).
+- **Sub-agents** under an agent's card start folded; its bot count opens them.
 - **Agents list**: click a card to show its pane; snooze (30 minutes, 1 hour, 3 hours, tomorrow 9:00, or until woken) settles
   its tab until then; a settled tab you look at goes back when you look elsewhere; Recently closed
   reopens a conversation. After a restart, conversations whose terminals came back as shells are

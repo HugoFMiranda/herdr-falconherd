@@ -10,7 +10,7 @@ import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { panes, spaces, terminals, props, run, theme, home, hc, exec, notify, nextCommand, openOverlay, closeOverlay } from "herdr";
 import { sessionAccount, buildCopyArgv, briefRequest, formatTokens, switchTargets, switchKind, MODEL_CHOICES, EFFORT_LEVELS, loginShell, localAddress, machineOf, splitModels, homeLabel, originOf, shortAgo } from "./core.js";
-import { sessionOf, terminalAccount, readingsFor, parse, subagentsOf, openSubagent, readOn, platformOf, machineBadge, hasConversation, notifyEmpty } from "./session.js";
+import { loadAccounts, sessionOf, terminalAccount, readingsFor, parse, subagentsOf, openSubagent, readOn, platformOf, machineBadge, hasConversation, notifyEmpty } from "./session.js";
 
 const OWN = (name) => `mods/falcon-hood/${name}.svg`;
 const HERDR = (name) => `mods/workspace-chrome/${name}.svg`;
@@ -145,7 +145,9 @@ export default class FalconHood extends View {
       this.loading = true;
       cx.spawn(async (cx) => {
         try {
-          const s = await sessionOf(props().subagentsOf).catch(() => null);
+          // The header hands over its conversation (a lookup of its own here could come back empty).
+          await loadAccounts(); // this copy's accounts (the folders sub-agents are under)
+          const s = props().session ?? await sessionOf(props().subagentsOf).catch(() => null);
           this.list = s ? await subagentsOf(s, { all: true }).catch(() => []) : [];
           cx.notify();
         } finally { this.loading = false; }
@@ -253,7 +255,7 @@ export default class FalconHood extends View {
         .when(this.subs.total > 0, (el) => el.child(h_flex().id(`hood-subs-${pane}`).flex_none().h(20).px(5).gap(4).items_center().rounded(5).cursor_pointer()
           .text_size(11).text_color(this.subs.running ? t.working : t.dim).hover((x) => x.bg(t.hover).text_color(t.foreground))
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-          .on_click((_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "falcon-hood", kind: "popup", width: 390, height: 52 + Math.min(340, 31 * Math.max(1, this.subs.total)), props: { subagentsOf: s.terminal } }); })
+          .on_click((_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "falcon-hood", kind: "popup", width: 390, height: 52 + Math.min(340, 31 * Math.max(1, this.subs.total)), props: { subagentsOf: s.terminal, session: { tool: s.tool, account: s.account, sessionId: s.sessionId, machine: s.machine, home: s.home, cache: s.cache, terminal: s.terminal } } }); })
           .child(svg(OWN("bot")).size(13).flex_none()).child(this.subs.running ? `${this.subs.running}/${this.subs.total}` : String(this.subs.total))))
         .when(Boolean(md), (el) => el.child(this.tool(t, `hood-md-${pane}`, OWN("popout"), "Open the full rendering in the browser",
           () => exec(`${home()}/.local/bin/herdr-md-browser`, [md]).catch(() => notify({ title: "Couldn't open the browser view", level: "error" })))))

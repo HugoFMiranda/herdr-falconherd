@@ -1,6 +1,6 @@
 // falcon-roster: the Accounts and + menu sections in a window of their own (the shared Falconherd
 // opens this from Settings links; here they're also inside the Settings copy). Its sections are
-// copies (accounts.js, launchers.js, store.js, ui.js) of the ones the Settings sections use.
+// copies (accounts.js, launchers.js, titles.js, store.js, ui.js) of the ones the Settings sections use.
 // props: { section: "accounts" | "menu" }. Changes save as they're made (store.js).
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
@@ -8,10 +8,12 @@ import { props, theme, closeOverlay } from "herdr";
 import { mySectionsInit } from "./store.js";
 import { accountsSection } from "./accounts.js";
 import { menuSection } from "./launchers.js";
+import { titlesSection } from "./titles.js";
 
 const TABS = [
   { id: "accounts", title: "Accounts", icon: "mods/falcon-roster/accounts.svg" },
   { id: "menu", title: "+ menu", icon: "mods/falcon-roster/menu.svg" },
+  { id: "titles", title: "Titles", icon: "mods/falcon-roster/titles.svg" },
 ];
 
 export default class FalconRoster extends View {
@@ -35,7 +37,7 @@ export default class FalconRoster extends View {
     const m = this.mine;
     const body = !m?.loaded
       ? div().py(14).text_size(12.5).text_color(t.dim).child("Reading…")
-      : this.section === "menu" ? menuSection(m, t) : accountsSection(m, t);
+      : this.section === "menu" ? menuSection(m, t) : this.section === "titles" ? titlesSection(m, t) : accountsSection(m, t);
     return v_flex().size_full().bg(t.popover).text_color(t.foreground).text_size(13)
       .child(h_flex().h(46).flex_none().px(14).gap(4).items_center().border_b_1().border_color(t.border)
         .children(TABS.map((x) => this.tab(t, x)))

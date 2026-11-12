@@ -12,13 +12,16 @@ import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, panes, focused, spaces, machines, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, hc, exec, notify } from "herdr";
 import { sessionAccount, machineColor, machineOf, SECTION_LABELS, FOLDED_BY_DEFAULT, snoozeUntil, dueSnoozes, SNOOZE_FOREVER, staleSettled, resumeArgv, rememberClosed, lostConversations, isShell, loginShell, shortAgo, flockFacets, flockMatches } from "./core.js";
-import { sessionOf, terminalAccount, parse, subagentsOf, openSubagent, readOn, platformOf, machineBadge, terminalFacts } from "./session.js";
+import { sessionOf, terminalAccount, parse, subagentsOf, openSubagent, readOn, platformOf, machineBadge, terminalFacts, titlesOn, recentPrompts, helper } from "./session.js";
+import { accounts, cleanTopic } from "./core.js";
 
 // Shared with the tab bar and the status bar.
 const SNOOZED = "flock.snoozed";  // terminal -> until (ms)
 const PEEKING = "tabs.peeking";           // tab -> true (a settled one open for a look) | { closed: conversation }
 const CLOSED = "flock.closed";            // the last ended conversations
 const RESUMED = "flock.resumed";          // terminal -> created_ms of the one a resume was typed into
+const TOPICS = "flock.topics";            // session -> { title, at }: Claude Haiku's title for what it's doing now
+const TOPIC_EVERY = 60000;                // a conversation's topic is asked at most this often
 const OPEN = "flock.open";                // terminal -> the conversation in it, to resume after a crash
 const OLD = { [SNOOZED]: "agents-session.snoozed", [CLOSED]: "agents-session.closed", [OPEN]: "agents-session.open" };
 const SETTLED_CLOSE_MS = 24 * 3600000;    // a settled tab this old is closed (its conversation to Recently closed)
@@ -78,10 +81,18 @@ export default class FalconFlock extends View {
     this.sessions = new Map();   // terminal -> its session and account
     this.known = new Map();      // terminal -> the conversation to remember if it ends
     this.subagents = new Map();  // terminal -> its running Claude sub-agents
-    this.subsFolded = new Set();
+    this.subsOpen = new Set();   // cards whose running sub-agents are shown (folded by default)
+    this.lastStatus = new Map(); // terminal -> its status last refresh (a reply ends: working -> not)
+    this.topicAt = new Map();    // session -> when its topic was last asked
     this.changed = parse(localStorage.getItem("changed")) ?? {}; // terminal -> { s, at }: since when it's in its state
     this.copied = { address: null, until: 0 };
     cx.timer.every(30000, (cx) => cx.notify());
+    // What working agents say they're doing (their cards' second line): redrawn when it changes.
+    cx.timer.every(2000, (cx) => {
+      if (titlesOn().cards === "tab") return;
+      const key = terminals().filter((x) => x.report?.state === "working").map((x) => `${x.address}:${x.report?.msg ?? ""}`).join("|");
+      if (key !== this.activityKey) { this.activityKey = key; cx.notify(); }
+    });
     const refresh = (cx) => {
       if (this.refreshing) return;
       this.refreshing = true;
@@ -121,6 +132,8 @@ export default class FalconFlock extends View {
         setShared(CLOSED, rememberClosed(shared(CLOSED) ?? [], { ...k, at: Date.now() }));
       }
       if (this.lostChecked) setShared(OPEN, Object.fromEntries(this.known));
+      if (titlesOn().cards === "haiku") this.askTopics(live, next);
+      this.lastStatus = new Map(live.map((a) => [a.address, a.status]));
       this.wake();
       const key = (m) => [...m].map(([k, v]) => `${k}=${v.name}/${this.known.get(k)?.title}/${v.look?.id}/${v.look?.color}/${v.look?.icon}`).sort().join();
       const subKey = [...this.subagents].map(([k, v]) => `${k}:${v.map((x) => x.id).join(",")}`).join(";");
@@ -131,6 +144,32 @@ export default class FalconFlock extends View {
     cx.timer.every(5000, refresh);
     // Lost terminals come back as shells a little after a start: then resume what ran in them.
     cx.timer.after(8000, (cx) => cx.spawn(async () => { await this.resumeLost(); this.lostChecked = true; }));
+  }
+
+  // Settings → Titles → Agents list: Claude Haiku. A conversation's title follows what it's doing:
+  // asked again when a reply ends (and at first), at most once a minute, one at a time, on its own account.
+  askTopics(live, sessions) {
+    if (this.asking) return;
+    const topics = shared(TOPICS) ?? {};
+    const due = live.map((a) => ({ a, s: sessions.get(a.address) })).find(({ a, s }) => s?.tool === "claude"
+      && (!topics[s.sessionId] || (this.lastStatus.get(a.address) === "working" && a.status !== "working"))
+      && Date.now() - (this.topicAt.get(s.sessionId) ?? 0) > TOPIC_EVERY);
+    if (!due) return;
+    const { s } = due;
+    this.topicAt.set(s.sessionId, Date.now());
+    this.asking = true;
+    (async () => {
+      const p = await recentPrompts(s);
+      if (!p?.recent?.length) return;
+      const claude = accounts(s.machine, "claude");
+      const dir = (claude.find((x) => x.id === s.account) ?? claude[0])?.dir;
+      if (!dir) return;
+      const r = await helper("claude-tabname", [dir, p.recent.join(" | "), "6"], s.machine, { timeout: 40000 }).catch(() => null);
+      const title = r?.code === 0 ? cleanTopic(r.stdout) : null;
+      if (!title) return;
+      const kept = Object.entries(shared(TOPICS) ?? {}).sort((x, y) => y[1].at - x[1].at).slice(0, 99);
+      setShared(TOPICS, { ...Object.fromEntries(kept), [s.sessionId]: { title, at: Date.now() } });
+    })().catch(() => null).finally(() => { this.asking = false; });
   }
 
   // Due snoozes wake their tab; a snoozed or looked-at tab shown meanwhile goes back once another is
@@ -304,7 +343,16 @@ export default class FalconFlock extends View {
     const k = this.known.get(a.address);
     const project = a.space_name || label(a);
     const line = /^\d+$/.test(label(a)) ? a.program?.name || label(a) : label(a);
-    const heading = k?.title || (line !== project ? line : null) || a.program?.name || project;
+    // The card: the tab's name, and (Settings → Titles → Agents list) under it what's happening: while
+    // it works, what the agent says it's doing; between replies, its topic (Claude Code's own name for
+    // the conversation, or Claude Haiku's title for what it's doing now).
+    const heading = (line !== project ? line : null) || a.program?.name || project;
+    const mode = titlesOn().cards;
+    const working = a.status === "working";
+    const live = working ? plain(terminals().find((x) => x.address === a.address)?.report?.msg) : null;
+    const topic = mode === "haiku" ? (shared(TOPICS) ?? {})[k?.sessionId]?.title || k?.title : k?.title;
+    const happening = mode === "tab" ? null : live || topic || null;
+    const activity = happening && happening !== heading ? happening : null;
     const since = this.changed[a.address]?.at;
     const edge = look?.color ?? t.border;
     const running = (this.subagents.get(a.address) ?? []).length;
@@ -312,7 +360,7 @@ export default class FalconFlock extends View {
       .when(Boolean(machine), (el) => el.child(machineBadge(t, machine, { label: false })))
       .when(running > 0, (el) => el.child(h_flex().id(`flock-subs-${a.address}`).flex_none().h(18).px(4).gap(3).items_center().rounded(5).cursor_pointer()
         .text_size(11).text_color(t.working).hover((x) => x.bg(t.hover)).tooltip(`${running} sub-agent${running === 1 ? "" : "s"} running`)
-        .on_click((_e, cx) => { cx.stop_propagation(); this.subsFolded.has(a.address) ? this.subsFolded.delete(a.address) : this.subsFolded.add(a.address); cx.notify(); })
+        .on_click((_e, cx) => { cx.stop_propagation(); this.subsOpen.has(a.address) ? this.subsOpen.delete(a.address) : this.subsOpen.add(a.address); cx.notify(); })
         .child(svg("mods/falcon-hood/bot.svg").size(11)).child(String(running))))
       .when(subs.length > 0, (el) => el.child(div().id(`flock-fold-${a.address}`).flex_none().p(2).rounded(4).cursor_pointer().text_color(t.dim)
         .hover((x) => x.bg(t.hover)).on_click((_e, cx) => { cx.stop_propagation(); this.folded.has(a.address) ? this.folded.delete(a.address) : this.folded.add(a.address); cx.notify(); })
@@ -340,7 +388,9 @@ export default class FalconFlock extends View {
           .child(div().flex_1()).child(tools))
         .child(h_flex().gap(8).items_center()
           .child(div().flex_1().min_w(0).truncate().text_size(13.5).font_semibold().text_color(a.status === "idle" && !a.focused ? t.muted : t.foreground).child(heading))
-          .child(this.state(t, a.status))));
+          .child(this.state(t, a.status)))
+        .when(Boolean(activity), (el) => el.child(div().min_w(0).truncate().text_size(12).line_height("16px")
+          .text_color(working && live ? t.muted : t.dim).child(activity))));
   }
 
   // A running Claude sub-agent under its agent: click shows its task and latest output.
@@ -465,7 +515,7 @@ export default class FalconFlock extends View {
     const ctx = (subs) => ({ now, snoozed, away, label, subs });
     const withKids = (a) => {
       const subs = rail ? [] : this.tree(all, a.address);
-      const runningSubs = this.subsFolded.has(a.address) ? [] : (this.subagents.get(a.address) ?? []).map((x) => this.subagentRow(t, x, now));
+      const runningSubs = !this.subsOpen.has(a.address) ? [] : (this.subagents.get(a.address) ?? []).map((x) => this.subagentRow(t, x, now));
       return [rail ? this.railItem(t, a, label) : this.card(t, a, ctx(subs)), ...runningSubs,
         ...(this.folded.has(a.address) ? [] : subs.map((s) => this.kidRow(t, s, shown, byPriority)))];
     };

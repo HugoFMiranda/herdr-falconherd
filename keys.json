@@ -9,6 +9,7 @@
     "ctrl-shift-g": "falcon-status.usage",
     "ctrl-shift-s": "falcon-hood.side",
     "ctrl-shift-d": "falcon-hood.fork",
-    "ctrl-shift-m": "falcon-hood.send"
+    "ctrl-shift-m": "falcon-hood.send",
+    "ctrl-alt-r": "falcon-perch.regenerate"
   }
 }

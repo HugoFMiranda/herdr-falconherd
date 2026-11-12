@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# claude-tabname <account> <conversation title>: a 2-3 word tab name written by Claude Haiku, on that
-# account (counts against its limits). Prints the model's raw answer. The account is its config dir
-# in home (.claude, .claude_personal; the mods pass this machine's), or work / personal.
+# claude-tabname <account> <text> [words]: a 2-3 word tab name written by Claude Haiku, on that
+# account (counts against its limits); with words (more than 3), a title of up to that many words
+# for what a conversation is doing now (the agents list's). Prints the model's raw answer. The
+# account is its config dir in home (.claude, .claude_personal; the mods pass this machine's), or
+# work / personal.
 set -uo pipefail
-account="${1:-}"; text="${2:-}"
+account="${1:-}"; text="${2:-}"; words="${3:-3}"
+case "$words" in *[!0-9]*|"") words=3 ;; esac
 case "$account" in
   work) account=.claude ;;
   personal) account=.claude_personal ;;
@@ -15,5 +18,9 @@ case "$account" in
   *) echo "usage: claude-tabname <.claude|.claude_personal|work|personal> <text>" >&2; exit 2 ;;
 esac
 [ -n "$text" ] || { echo "claude-tabname: no text" >&2; exit 2; }
-prompt="Give a title of at most 3 words for a terminal tab about this. Reply with the title only, no quotes, no punctuation. About: ${text:0:300}"
+if [ "$words" -gt 3 ]; then
+  prompt="Give a title of at most $words words for what this conversation is doing now, from its latest messages (newest last). Reply with the title only, no quotes, no punctuation. Messages: ${text:0:1200}"
+else
+  prompt="Give a title of at most 3 words for a terminal tab about this. Reply with the title only, no quotes, no punctuation. About: ${text:0:300}"
+fi
 exec timeout 30 claude -p --model claude-haiku-5-5 --no-session-persistence "$prompt" </dev/null

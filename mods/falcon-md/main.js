@@ -124,6 +124,6 @@ export default class MdView extends View {
         .child(this.error || this.text === null
           ? div().p(16).text_color(t.dim).child(this.error ?? "Loading…")
           : this.showSource && this.code ? source(this.code)
-          : formatted("falcon-md-doc", this.text, this.file, (file, cx) => { this.file = file; this.text = null; this.load(cx); })));
+          : formatted("falcon-md-doc", this.text, this.file, (file, cx) => { this.file = file; this.text = null; this.load(cx); }, this.on)));
   }
 }

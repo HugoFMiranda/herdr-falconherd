@@ -4,7 +4,7 @@
 import { svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { hc, exec, home, appHome, readTextFile, writeTextFile, openOverlay, panes, spaces, notify, window, run, terminals, shared } from "herdr";
-import { accounts, setAccounts, accountsFrom, setMachineLooks, machineColor, PROFILE_SAVED, codexAccountOf, accountTitle, programAccount, switchTargets, modelKey, MODEL_CHOICES, keysFor, descendants, splitCommandLine, machineOf, fromStatusline, fromCodexTokenCount, newest, subagentsFrom, projectSlug, switchKind, switchArgv, loginShell } from "./core.js";
+import { accounts, setAccounts, accountsFrom, setMachineLooks, titleSettings, promptsFrom, machineColor, PROFILE_SAVED, codexAccountOf, accountTitle, programAccount, switchTargets, modelKey, MODEL_CHOICES, keysFor, descendants, splitCommandLine, machineOf, fromStatusline, fromCodexTokenCount, newest, subagentsFrom, projectSlug, switchKind, switchArgv, loginShell } from "./core.js";
 
 export const cacheRoot = () => `${home()}/.cache/herdr-session`;
 export const parse = (text) => { try { return text ? JSON.parse(text) : null; } catch { return null; } };
@@ -40,6 +40,10 @@ export const homeOn = (machine = null) => {
 const RETRY_MS = 60000;
 // This computer's is read again as soon as the settings page saved it (PROFILE_SAVED).
 const loaded = new Map(); // machine -> { promise, found, at, saved }
+// Whether tabs and the agents list get titles from Claude Haiku (Settings → Titles), as last read.
+let titles = titleSettings(null);
+export const titlesOn = () => titles;
+
 export const loadAccounts = (machine = null) => {
   const was = loaded.get(machine);
   const saved = machine ? null : shared(PROFILE_SAVED) ?? null;
@@ -51,7 +55,7 @@ export const loadAccounts = (machine = null) => {
     const file = /^[A-Za-z0-9_-]+$/.test(profile ?? "") ? parse(await readOn(`${root}/machines/${profile}.json`, machine)) : null;
     entry.found = Boolean(file);
     setAccounts(accountsFrom(file), machine);
-    if (!machine) setMachineLooks(file?.machines);
+    if (!machine) { setMachineLooks(file?.machines); titles = titleSettings(file); }
   })();
   loaded.set(machine, entry);
   return entry.promise;
@@ -280,6 +284,21 @@ async function claudeLog(s) {
   const dir = accountOf(s.account, s.machine)?.dir;
   const r = await exec("sh", ["-c", 'for f in "$1"/projects/*/"$2".jsonl; do [ -f "$f" ] && echo "$f" && break; done', "sh", `${s.home}/${dir}`, s.sessionId], on(s.machine)).catch(() => null);
   return r?.stdout.trim() || null;
+}
+
+// A Claude conversation's typed prompts: { count, recent } (count: its user entries that aren't tool
+// results, about how many messages were typed; recent: the last three typed ones). Only user lines
+// are read (a log's other lines can be megabytes of tool output).
+export async function recentPrompts(s) {
+  if (s?.tool !== "claude") return null;
+  const log = await claudeLog(s);
+  if (!log) return null;
+  const typed = 'grep -F \'"type":"user"\' "$1" | grep -vF \'"tool_use_id"\'';
+  const r = await exec("sh", ["-c", `${typed} | wc -l; ${typed} | tail -n 40`, "sh", log], on(s.machine)).catch(() => null);
+  if (r?.code !== 0) return null;
+  const [first, ...lines] = r.stdout.split("\n");
+  const recent = promptsFrom(lines).slice(-3);
+  return { count: Math.max(Number(first.trim()) || 0, recent.length), recent };
 }
 
 const pause = (ms) => exec("sleep", [String(ms / 1000)]).catch(() => null);

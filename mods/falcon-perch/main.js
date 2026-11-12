@@ -3,18 +3,33 @@
 // all of them, the ones away (settled or snoozed), the + launcher, the side panels the layout has,
 // and the window buttons where the system draws none.
 //   Click a tab: show it. Drag it onto another: move it there. Double-click: rename. Middle-click or
-//   ×: close. Right-click: Herdr's tab menu. Wheel: previous / next tab.
-//   Unnamed tabs get a short name from their conversation (claude-tabname), once.
-// Popups of this mod: props.away (the settled and snoozed), props.all (every tab of the space).
+//   ×: close. Right-click: the tab menu (Rename, Regenerate title, New tab, Close). Wheel: previous /
+//   next tab. With Settings → Titles → Tab names: Claude Haiku, tabs get names from their
+//   conversation (claude-tabname); see name().
+// Popups of this mod: props.away (the settled and snoozed), props.all (every tab of the space),
+// props.tabMenu ({ tab, space }).
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { spaces, panes, run, shared, setShared, openOverlay, closeOverlay, props, theme, window, layout, settings, appHome, readTextFile, hc, exec } from "herdr";
-import { accounts, sessionAccount, cleanTabName, shellTopic, SNOOZE_FOREVER, tabTitle, shortAgo, panelFor } from "./core.js";
-import { sessionOf, terminalAccount, parse, loadAccounts, readOn, helper, machineBadge } from "./session.js";
+import { spaces, panes, run, shared, setShared, openOverlay, closeOverlay, props, theme, window, layout, settings, appHome, readTextFile, hc, exec, notify, keys, nextCommand } from "herdr";
+import { accounts, sessionAccount, cleanTabName, shellTopic, SNOOZE_FOREVER, tabTitle, shortAgo, panelFor, TAB_NAME_AT, keyLabel } from "./core.js";
+import { sessionOf, terminalAccount, parse, loadAccounts, readOn, helper, machineBadge, titlesOn, recentPrompts } from "./session.js";
 
 const ICON = (name) => `mods/workspace-chrome/${name}.svg`;
 const SNOOZED = "flock.snoozed"; // terminal -> until (the agents list, falcon-flock)
 const PEEKING = "tabs.peeking";           // tab -> { closed? }: settled, open for a look
+const AUTO = "auto-names";               // localStorage: tab -> { name, stage }: names this bar gave
+const REGEN = "perch.regenerate";        // shared { tab, at }: the tab menu asks for a new title
+const RETRY_MS = 30000;                   // a tab not ready to name (or a failed ask) waits this long
+// Ask the bar for a new title for a tab (from its menu, or the key).
+const regenerate = (tab) => {
+  setShared(REGEN, { tab, at: Date.now() });
+  notify({ title: "Asking Claude Haiku for a title…", level: "info", timeout: 3000 });
+};
+// The key bound to a command (global or this layout's), as people read it; "" when none.
+const keyFor = (action) => {
+  const b = keys().find((k) => (k.section === "global" || k.section.startsWith("layout:")) && k.action === action);
+  return b ? keyLabel(b.keys, window()?.platform) : "";
+};
 const PANELS = { files: ["Files", "files"], changes: ["Changes", "git-compare"], devices: ["Devices", "monitor"] };
 
 const findNode = (node, id) => (node?.id === id ? node : (node?.children ?? []).map((c) => findNode(c, id)).find(Boolean) ?? null);
@@ -40,7 +55,8 @@ async function lookOf(pane) {
 export default class FalconPerch extends View {
   init(_props, cx) {
     this.looks = new Map();   // terminal -> "icon|color" (empty in the popups: their rows show programs' icons)
-    if (props()?.away || props()?.all) return;
+    if (props()?.away || props()?.all || props()?.tabMenu) return;
+    this.triedAt = {};       // tab -> when naming it was last tried
     this.pressed = null;      // a tab being dragged
     this.memory = parse(localStorage.getItem("panels")) ?? {}; // space -> its side panel (null: closed)
     readTextFile(`${appHome()}/mods/insights/mod.json`).then((t) => { this.insights = Boolean(t); cx.notify(); }, () => {});
@@ -57,43 +73,97 @@ export default class FalconPerch extends View {
     };
     refresh(cx);
     cx.timer.every(5000, refresh);
+    // Regenerate title, asked from a tab menu (a popup: it closes before the answer comes).
+    cx.timer.every(500, () => { const ask = shared(REGEN); if (ask && ask.at !== this.regenAt && !this.naming) cx.spawn(async () => this.name()); });
+    // Keys: falcon-perch.regenerate (keys.json) asks a new title for the shown tab.
+    cx.spawn(async () => {
+      for (;;) {
+        const command = String(await nextCommand()).split(".").pop();
+        const tab = spaces().find((x) => x.active)?.tabs.find((x) => x.active);
+        if (command === "regenerate" && tab) regenerate(tab.id);
+      }
+    });
   }
 
-  // Unnamed tabs: once per conversation (or plain terminal) a short name from what it's about, on its
-  // own account and machine; never over a name someone gave it meanwhile.
+  // Tab names by Claude Haiku: on their own when Settings → Titles → Tab names is "Claude Haiku", or
+  // for one tab when its menu's Regenerate title asks (any setting). A conversation's tab is named once
+  // it has TAB_NAME_AT[0] typed prompts (enough to say what it's about) and again at TAB_NAME_AT[1],
+  // while it still has the name this bar gave it: a name someone typed is never replaced on its own.
   async name() {
     if (this.naming) return;
     this.naming = true;
     try {
       await loadAccounts();
+      const ask = shared(REGEN);
+      const forced = ask && ask.at !== this.regenAt ? ask.tab : null;
+      if (forced) this.regenAt = ask.at;
+      if (titlesOn().tabs !== "haiku" && !forced) return;
+      const auto = parse(localStorage.getItem(AUTO)) ?? {};
       const done = new Set(parse(localStorage.getItem("named")) ?? []);
-      for (const tab of spaces().flatMap((s) => s.tabs).filter((x) => !x.named)) {
-        const lead = leadOf(tab);
-        const first = panes().find((p) => p.tab === tab.id && p.terminal);
-        let key = null, topic = null, account = null, machine = null;
-        if (lead) {
-          const s = await sessionOf(lead.terminal).catch(() => null);
-          if (!s) continue;
-          key = s.sessionId; account = s.account; machine = s.machine;
-          if (done.has(key)) continue;
-          topic = await topicOf(s);
-        } else if (first) {
-          key = `term:${first.terminal}`;
-          if (done.has(key)) continue;
-          topic = shellTopic(parse((await hc(["get", first.terminal]).catch(() => null))?.stdout ?? "")?.foreground, first.cwd);
-        }
-        if (!key || !topic) continue;
-        done.add(key);
-        localStorage.setItem("named", JSON.stringify([...done].slice(-200)));
-        const claude = accounts(machine, "claude");
-        const dir = (claude.find((a) => a.id === account) ?? claude[0])?.dir;
-        if (!dir) continue;
-        const r = await helper("claude-tabname", [dir, topic], machine, { timeout: 40000 }).catch(() => null);
+      const all = spaces().flatMap((s) => s.tabs);
+      for (const tab of forced ? all.filter((x) => x.id === forced) : all) {
+        const ours = auto[tab.id];
+        if (!forced && tab.named && tab.name !== ours?.name) continue; // the person's own name
+        if (!forced && Date.now() - (this.triedAt[tab.id] ?? 0) < RETRY_MS) continue;
+        this.triedAt[tab.id] = Date.now();
+        const job = await this.nameJob(tab, ours, done, Boolean(forced));
+        if (!job) { if (forced) notify({ title: "Nothing to name it from yet", body: "Send a message in it first", level: "info", timeout: 4000 }); continue; }
+        const r = await helper("claude-tabname", [job.dir, job.topic], job.machine, { timeout: 40000 }).catch(() => null);
         const name = r?.code === 0 ? cleanTabName(r.stdout) : null;
         const still = spaces().flatMap((s) => s.tabs).find((x) => x.id === tab.id);
-        if (name && still && !still.named) run("tab.rename", { id: tab.id, name });
+        if (!name || !still) { if (forced) notify({ title: "Couldn't get a title", body: "Claude Haiku didn't answer (the claude-tabname helper)", level: "warning", timeout: 5000 }); continue; }
+        if (!forced && still.named && still.name !== ours?.name) continue; // renamed meanwhile
+        run("tab.rename", { id: tab.id, name });
+        auto[tab.id] = { name, stage: job.stage };
+        localStorage.setItem(AUTO, JSON.stringify(Object.fromEntries(Object.entries(auto).slice(-200))));
+        if (job.key) { done.add(job.key); localStorage.setItem("named", JSON.stringify([...done].slice(-200))); }
       }
     } finally { this.naming = false; }
+  }
+
+  // What to name a tab from, or null (nothing to say yet): { topic, dir, machine, stage, key? }.
+  async nameJob(tab, ours, done, forced) {
+    const lead = leadOf(tab);
+    if (lead) {
+      const s = await sessionOf(lead.terminal).catch(() => null);
+      if (!s) return null;
+      const claude = accounts(s.machine, "claude");
+      const dir = (claude.find((a) => a.id === s.account) ?? claude[0])?.dir;
+      if (!dir) return null;
+      if (s.tool === "claude") {
+        const stage = forced ? Math.max(1, ours?.stage ?? 1) : (ours?.stage ?? 0) + 1;
+        const p = await recentPrompts(s);
+        if (!forced && (stage > TAB_NAME_AT.length || (p?.count ?? 0) < TAB_NAME_AT[stage - 1])) return null;
+        const title = parse(await readOn(`${s.cache}/claude/${s.sessionId}.json`, s.machine))?.title;
+        const topic = [title, ...(p?.recent ?? [])].filter(Boolean).join(" · ");
+        return topic ? { topic, dir, machine: s.machine, stage } : null;
+      }
+      if (ours && !forced) return null; // Codex: named once, from its first message
+      const topic = await topicOf(s);
+      return topic ? { topic, dir, machine: s.machine, stage: TAB_NAME_AT.length } : null;
+    }
+    const first = panes().find((p) => p.tab === tab.id && p.terminal);
+    if (!first) return null;
+    const key = `term:${first.terminal}`;
+    if (!forced && (ours || done.has(key))) return null;
+    const topic = shellTopic(parse((await hc(["get", first.terminal]).catch(() => null))?.stdout ?? "")?.foreground, first.cwd);
+    const dir = accounts(null, "claude")[0]?.dir;
+    return topic && dir ? { topic, dir, machine: null, stage: TAB_NAME_AT.length, key } : null;
+  }
+
+  // The tab menu (right-click a tab): Herdr's items plus Regenerate title.
+  tabMenu(t) {
+    const { tabMenu: { tab: id, space }, overlay } = props();
+    const close = () => closeOverlay(overlay);
+    const item = (key, icon, label, command, action, danger = false) => h_flex().id(`perch-menu-${key}`).h(30).px(9).gap(9).flex_none().items_center().rounded(6)
+      .cursor_pointer().text_color(danger ? t.blocked : t.foreground).hover((s) => s.bg(t.selected)).on_click(() => { close(); action(); })
+      .child(svg(icon ? ICON(icon) : "mods/falcon-perch/spark.svg").size(13).flex_none().text_color(t.muted)).child(div().flex_1().child(label))
+      .child(div().flex_none().text_size(11).text_color(t.dim).child(keyFor(command)));
+    return v_flex().size_full().p(5).gap(1).bg(t.popover).text_size(12.5)
+      .child(item("rename", "square-pen", "Rename", "tab.rename", () => run("tab.rename", { id })))
+      .child(item("regenerate", null, "Regenerate title", "falcon-perch.regenerate", () => regenerate(id)))
+      .child(item("new", "plus", "New tab", "tab.new", () => run("tab.new", { space })))
+      .child(item("close", "x", "Close", "tab.close", () => run("tab.close", { id }), true));
   }
 
   // Each space remembers its side panel: switching to it shows its choice; changing it records it.
@@ -166,7 +236,7 @@ export default class FalconPerch extends View {
         else run("tab.select", { id: tab.id });
       })
       .on_mouse_down("middle", (_e, cx) => { cx.stop_propagation(); run("tab.close", { id: tab.id }); })
-      .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "menu", kind: "popup", width: 200, props: { tab: "tab", target: { id: tab.id, space: space.id } } }); })
+      .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "falcon-perch", kind: "popup", width: 260, height: 136, props: { tabMenu: { tab: tab.id, space: space.id } } }); })
       .child(this.tabIcon(t, tab, Boolean(away)))
       .child(div().max_w(180).truncate().child(tabTitle(tab, programOf(tab))))
       .when(Boolean(mark), (el) => el.child(mark))
@@ -217,6 +287,7 @@ export default class FalconPerch extends View {
 
   render() {
     const t = theme();
+    if (props()?.tabMenu) return this.tabMenu(t);
     if (props()?.away || props()?.all) return this.popup(t);
     const space = spaces().find((s) => s.active);
     const all = tabsOf(space);

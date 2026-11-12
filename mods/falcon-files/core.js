@@ -55,7 +55,7 @@ export const PROFILE_SAVED = "sessions.profile-saved";
 // Herdr's own Settings, and the Accounts / + menu sections in a window of their own (falcon-roster).
 export const SETTINGS_HOME = Object.freeze({ general: "frame-settings", accounts: "falcon-roster" });
 export function settingsOverlay(section, home = SETTINGS_HOME) {
-  const ours = section === "accounts" || section === "menu";
+  const ours = section === "accounts" || section === "menu" || section === "titles";
   const mod = ours ? home.accounts : home.general;
   if (mod === "falcon-roster") return { mod, kind: "window", key: "falcon-roster", width: 760, height: 620, props: { section } };
   return { mod, kind: "dialog", width: 880, height: 620, props: { section } };
@@ -324,26 +324,78 @@ export function shellTopic(fg, cwd) {
   return `the command \`${cmd}\`${home ? "" : ` in the folder ${cwd.split("/").filter(Boolean).pop()}`}`;
 }
 
-export function cleanTabName(raw) {
+// A model's answer as a title: its first line, no quotes, at most `words` words, as many of them as
+// fit in `chars` (a long one is shortened, not dropped); paths and end punctuation left out.
+export function cleanTitle(raw, words, chars) {
   const line = String(raw ?? "").split("\n")[0].trim().replace(/^["'`“”‘’]+|["'`“”‘’]+$/g, "");
-  const s = line.split(/\s+/).slice(0, 3).join(" ").replace(/[.,;:!?]+$/, "").trim();
-  if (!s || s.length > 24) return null;
-  return s;
+  const kept = [];
+  for (const w of line.split(/\s+/).filter((x) => x && !/[\\/]/.test(x)).slice(0, words)) {
+    const next = [...kept, w].join(" ").replace(/[.,;:!?]+$/, "");
+    if (next.length > chars) break;
+    kept.push(w);
+  }
+  const s = kept.join(" ").replace(/[.,;:!?]+$/, "").trim();
+  return s || null;
+}
+export const cleanTabName = (raw) => cleanTitle(raw, 3, 24);
+// The agents list's title for a conversation: up to 6 words, 48 characters.
+export const cleanTopic = (raw) => cleanTitle(raw, 6, 48);
+
+// Titles (Settings → Titles, the profile's "titles"). Herdr's behavior by default.
+//   tabs: "herdr" (Herdr names them) | "haiku" (Claude Haiku names unnamed tabs from the conversation)
+//   cards: the agents list's cards: the tab's name, and under it what's happening or not:
+//   "tab" (the name only, as Herdr) | "activity" (while it works, what it says it's doing; between
+//   replies, Claude Code's own name for the conversation) | "haiku" (the same, with Claude Haiku's
+//   title for what it's doing now between replies, asked again after each reply)
+export const TITLE_CHOICES = Object.freeze({ tabs: ["herdr", "haiku"], cards: ["tab", "activity", "haiku"] });
+export function titleSettings(profile) {
+  const t = { ...(profile?.titles ?? {}) };
+  if (t.cards === "claude") t.cards = "activity"; // its earlier name
+  const pick = (key) => (TITLE_CHOICES[key].includes(t[key]) ? t[key] : TITLE_CHOICES[key][0]);
+  return { tabs: pick("tabs"), cards: pick("cards") };
+}
+// A tab is named once there are this many prompts, and named again (if still ours) at the second.
+export const TAB_NAME_AT = Object.freeze([3, 10]);
+
+// A Claude log's typed prompts, oldest first, from its JSONL lines: not tool results, slash commands,
+// their output or reminders. Each at most 400 characters.
+export function promptsFrom(lines) {
+  const out = [];
+  for (const line of lines ?? []) {
+    if (!line.includes('"user"')) continue;
+    let j;
+    try { j = JSON.parse(line); } catch { continue; }
+    if (j?.type !== "user" || j.isMeta || j.isSidechain) continue;
+    const c = j.message?.content;
+    if (Array.isArray(c) && c.some((x) => x?.type === "tool_result")) continue;
+    const text = (typeof c === "string" ? c : Array.isArray(c) ? c.filter((x) => x?.type === "text").map((x) => x.text).join(" ") : "")
+      .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, " ").trim();
+    if (!text || /^<(command-|local-command|bash-|task-notification)/.test(text) || text.startsWith("Caveat:")) continue;
+    out.push(text.replace(/\s+/g, " ").slice(0, 400));
+  }
+  return out;
 }
 
 // Markdown viewer: which files it formats, and where a link inside one goes ("#anchor" dropped).
 export const isMarkdown = (path) => /\.(md|markdown|mdx)$/i.test(path ?? "");
 export function resolveLink(fromFile, url) {
   if (/^[a-z][a-z0-9+.-]*:/i.test(url)) return { web: url };
-  let clean = url.split("#")[0];
-  try { clean = decodeURIComponent(clean); } catch { /* not percent-encoded */ }
-  if (!isMarkdown(clean)) return null;
+  const raw = url.split("#")[0];
+  let clean = raw;
+  try { clean = decodeURIComponent(raw); } catch { /* not percent-encoded */ }
+  if (!isMarkdown(clean) && !isMarkdown(raw)) return null;
   const from = String(fromFile ?? "").replace(/\\/g, "/");
   const drive = /^[A-Za-z]:/.exec(from)?.[0] ?? "";
-  const base = clean.startsWith("/") ? "" : from.slice(drive.length, from.lastIndexOf("/") + 1);
-  const out = [];
-  for (const p of (base + clean).split("/")) { if (p === "..") out.pop(); else if (p !== "." && p !== "") out.push(p); }
-  return { file: `${drive}/${out.join("/")}` };
+  const resolve = (link) => {
+    const base = link.startsWith("/") ? "" : from.slice(drive.length, from.lastIndexOf("/") + 1);
+    const out = [];
+    for (const p of (base + link).split("/")) { if (p === "..") out.pop(); else if (p !== "." && p !== "") out.push(p); }
+    return `${drive}/${out.join("/")}`;
+  };
+  // A link is usually URL-encoded (My%20Doc.md), but a file may really have a % in its name
+  // (100%25.md): alt is the path as written, for when the decoded one isn't there.
+  const file = resolve(clean);
+  return clean === raw ? { file } : { file, alt: resolve(raw) };
 }
 
 // Claude Code's own sub-agents (its Agent tool), from <config>/projects/*/<session>/subagents/*.meta.json.
@@ -765,6 +817,17 @@ export function flockMatches(item, chosen) {
 export const shellQuote = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
 // The packing side says so on stderr when it fails (not every sh has pipefail).
 export const PACK_FAILED = "falconherd: reading the source failed";
+// How a copy went, from its exit code and stderr: GNU tar exits 1 when a file changed while it was
+// read, after writing a complete archive. That alone is a copy that worked, with a note.
+export function transferOutcome(code, stderr) {
+  const lines = String(stderr ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (code !== 0) return { ok: false };
+  if (!lines.includes(PACK_FAILED)) return { ok: true };
+  const rest = lines.filter((l) => l !== PACK_FAILED);
+  return rest.length && rest.every((l) => /file changed as we read it/i.test(l))
+    ? { ok: true, note: "A file changed while it was copied: the copy has it as it was then." }
+    : { ok: false };
+}
 // A destination as typed: "~" or "~/x" is that machine's home (another machine: relative to its
 // home, where its commands start).
 export function expandDest(dir, machine, home) {

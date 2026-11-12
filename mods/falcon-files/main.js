@@ -8,7 +8,7 @@
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, InputState, Input } from "gpui-base";
 import { spaces, panes, focused, exec, hc, readTextFile, watchFolder, theme, settings, window, openOverlay, closeOverlay, props, shared, home, notify, layout } from "herdr";
-import { modShown, homeLabel, transferCommand, transferDefault, shellQuote, expandDest, PACK_FAILED } from "./core.js";
+import { modShown, homeLabel, transferCommand, transferDefault, shellQuote, expandDest, transferOutcome } from "./core.js";
 import { isMarkdown, formatted, sourceState } from "./markdown.js";
 
 const MOD = "falcon-files";
@@ -293,8 +293,9 @@ export default class FalconFiles extends View {
       catch (e) { this.busy = false; this.problem = String(e.message ?? e); cx.notify(); return; }
       const r = await runHere(cmd).catch((e) => ({ code: 1, stderr: String(e) }));
       this.busy = false;
-      if (r.code === 0 && !String(r.stderr ?? "").includes(PACK_FAILED)) {
-        notify({ title: `${from.name} copied to ${to ?? "this computer"}`, body: dir, level: "success", timeout: 4000 });
+      const done = transferOutcome(r.code, r.stderr);
+      if (done.ok) {
+        notify({ title: `${from.name} copied to ${to ?? "this computer"}`, body: done.note ? `${dir}. ${done.note}` : dir, level: done.note ? "warning" : "success", timeout: done.note ? 7000 : 4000 });
         closeOverlay(props().overlay);
       } else {
         this.problem = `Couldn't copy it: ${(r.stderr || r.stdout || "").trim().slice(0, 200) || "it stopped"}`;
@@ -369,7 +370,7 @@ export default class FalconFiles extends View {
       .when(Boolean(this.file) && isMd && !this.mdSource, (el) => el.child(formatted("ff-md", this.md, this.full(), (abs, cx) => {
         if (abs.startsWith(`${this.root}/`)) this.show(abs.slice(this.root.length + 1), cx);
         else openOverlay({ kind: "window", key: `falcon-md:${abs}`, mod: "falcon-md", props: { file: abs, on: this.on } });
-      })))
+      }, this.on)))
       .when(Boolean(this.file) && !(isMd && !this.mdSource), (el) => el.child(this.code ? Editor.new(this.code).flex_1().min_h(0)
         : div().p(12).text_color(t.dim).child(this.fileError || "Reading the file…")));
   }
