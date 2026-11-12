@@ -45,10 +45,9 @@ const ACTIONS = {
   },
   async disconnect({ name, target, session }) {
     // Remembered first: it can be connected again even if something stops in between.
-    const before = shared(DISCONNECTED) ?? {};
-    setShared(DISCONNECTED, { ...before, [name]: { target, session: session ?? null } });
+    setShared(DISCONNECTED, { ...(shared(DISCONNECTED) ?? {}), [name]: { target, session: session ?? null } });
     const r = await hcOr(["machine", "rm", name]);
-    if (r.code !== 0) { setShared(DISCONNECTED, before); failed("Disconnect failed", r); return; }
+    if (r.code !== 0) { forgetAway(name); failed("Disconnect failed", r); return; }
     notify({ title: `${name} disconnected`, body: "Its terminals keep running there. Right-click it to connect again", level: "info", timeout: 5000 });
   },
   async update({ name }) {

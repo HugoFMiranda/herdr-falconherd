@@ -48,7 +48,7 @@ export async function load(m) {
   if (baseText == null) {
     const current = await read(`${home}/programs.json`);
     baseText = isObject(parse(current)) ? current : `${JSON.stringify({ programs: {} }, null, 2)}\n`;
-    await writeTextFile(`${home}/programs.base.json`, baseText, null);
+    await writeTextFile(`${home}/programs.base.json`, baseText, null).catch(async () => { baseText = await read(`${home}/programs.base.json`); });
   }
   const base = parse(baseText);
   // Saving over what couldn't be read would lose it: say why instead, and don't save.

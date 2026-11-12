@@ -113,7 +113,9 @@ export default class FalconFlock extends View {
       for (const [address, k] of [...this.known]) {
         if (listed.has(address) || !reachable(machineOf(address))) continue;
         // Still running it, or the terminal is gone? Quit back to its shell (no agent reports there) is ended too.
-        const facts = await hc(["get", address]).then((r) => (r?.code === 0 ? parse(r.stdout) : null), () => null);
+        const got = await hc(["get", address]).catch(() => null);
+        if (!got || (got.code !== 0 && got.code !== 3)) continue; // hc couldn't say: ask again next time
+        const facts = got.code === 0 ? parse(got.stdout) : null;
         if (facts?.state === "live" && !(isShell(facts.foreground?.name) && !facts.status?.app)) continue;
         this.known.delete(address);
         setShared(CLOSED, rememberClosed(shared(CLOSED) ?? [], { ...k, at: Date.now() }));
@@ -207,7 +209,7 @@ export default class FalconFlock extends View {
     const listed = new Set(agents().map((a) => a.address));
     const resumed = shared(RESUMED) ?? {};
     const lost = lostConversations(saved, facts)
-      .filter(({ address }) => !listed.has(address) && resumed[address] !== facts[address]?.created_ms);
+      .filter(({ address }) => !listed.has(address) && (resumed[address] ?? null) !== (facts[address]?.created_ms ?? null));
     if (lost.length) setShared(RESUMED, { ...resumed, ...Object.fromEntries(lost.map(({ address }) => [address, facts[address]?.created_ms ?? null])) });
     for (const { address, conversation: c } of lost) {
       await hc(["send", address, resumeArgv({ tool: c.tool, account: c.account, sessionId: c.sessionId, skipPermissions: c.skip, machine: c.machine }).join(" ")]).catch(() => null);

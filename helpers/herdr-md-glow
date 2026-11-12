@@ -4,7 +4,8 @@
 # again into the same file and presses R (less reloads it in place, keeping the scroll position).
 # less keeps no hold on the mouse, so the wheel scrolls and dragging selects text as usual.
 f="$1"
-glow=$(command -v glow || echo "$HOME/.local/bin/glow")
+glow=$(command -v glow || for g in "$HOME/.local/bin/glow" /opt/homebrew/bin/glow /usr/local/bin/glow; do [ -x "$g" ] && { echo "$g"; break; }; done)
+[ -n "$glow" ] || glow="$HOME/.local/bin/glow"   # macOS apps start without Homebrew's PATH
 tmp=$(mktemp); trap 'rm -f "$tmp"; kill 0' EXIT
 sleep 0.4   # the window sets the real size just after the terminal starts
 stamp() { stat -c %Y-%s "$f" 2>/dev/null || stat -f %m-%z "$f" 2>/dev/null || echo gone; }

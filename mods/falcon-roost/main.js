@@ -89,7 +89,7 @@ export default class FalconRoost extends View {
       this.list = list; this.listedAt = Date.now();
       // Connected again (from a terminal the menu opened, say): it isn't "disconnected" any more.
       const away = shared(DISCONNECTED) ?? {};
-      const back = Object.keys(away).filter((n) => list.some((m) => m.name === n));
+      const back = Object.keys(away).filter((n) => list.some((m) => m.name === n) && !this.machineBusy.has(n));
       if (back.length) setShared(DISCONNECTED, Object.fromEntries(Object.entries(away).filter(([n]) => !back.includes(n))));
       cx.notify();
     });

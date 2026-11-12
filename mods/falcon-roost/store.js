@@ -46,13 +46,14 @@ export async function expand(machine, path) {
 export async function loadFolders(machine) {
   const file = `${await homeOf(machine)}/${FILE}`;
   const text = await readTextFile(file, { on: machine });
-  if (text == null) return;
+  if (text == null || !text.trim()) return;
   let d;
   try { d = JSON.parse(text); } catch {
     setShared(ERROR, `folders ${keyOf(machine)}: ${FILE} isn't valid JSON; fix or remove it`);
     throw new Error("unreadable folders file");
   }
   if (!d || typeof d !== "object") throw new Error("unreadable folders file");
+  if (shared(ERROR)?.startsWith(`folders ${keyOf(machine)}:`)) setShared(ERROR, null);
   const now = foldersOf(machine);
   const next = { list: Array.isArray(d.list) ? d.list : [], of: d.of && typeof d.of === "object" ? d.of : {}, at: Number(d.at) || 0 };
   written.set(keyOf(machine), Math.max(written.get(keyOf(machine)) ?? -1, next.at));

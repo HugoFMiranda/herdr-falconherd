@@ -47,7 +47,7 @@ export default class MdView extends View {
   launch(cx) {
     cx.spawn(async (cx) => {
       const glow = `${home()}/.local/bin/herdr-md-glow`;
-      const ready = await exec("sh", ["-c", 'test -x "$1" && { command -v glow >/dev/null || test -x "$HOME/.local/bin/glow"; }', "sh", glow]).catch(() => null);
+      const ready = await exec("sh", ["-c", 'test -x "$1" && { command -v glow >/dev/null || test -x "$HOME/.local/bin/glow" || test -x /opt/homebrew/bin/glow || test -x /usr/local/bin/glow; }', "sh", glow]).catch(() => null);
       if (ready?.code !== 0) { this.fallback(cx); return; }
       const r = await hc(["run", "--json", "--no-parent", "--rm", "--bg", "--label", "herdr.falcon-md=1", "--",
         `${home()}/.local/bin/herdr-md-glow`, this.file]).catch(() => null);
