@@ -4,6 +4,7 @@
     "ctrl-shift-d": "falcon-header.fork",
     "ctrl-shift-m": "falcon-header.send",
     "ctrl-space b": "falcon-header.subagents",
+    "ctrl-space v": "falcon-header.copy-mode",
     "ctrl-space w": "falcon-header.switch"
   }
 }

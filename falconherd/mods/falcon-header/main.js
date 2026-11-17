@@ -5,7 +5,10 @@
 // sub-agents, and its state. On hover, or while the pane has focus, a toolbar: the conversation's
 // actions (Send to main, Continue on…, Side chat, Fork) and the pane's (split, zoom, close).
 // Keys (keys.json): falcon-header.side / .fork / .send act on the focused pane.
-// Props from the app: { pane, terminal }. Popup of this mod: props.subagentsOf (a terminal).
+// Keys: falcon-header.copy-mode (any terminal): select its text from the keyboard (see initCopyMode).
+// A terminal scrolled up into its history gets a "jump to bottom" button.
+// Props from the app: { pane, terminal }. Popups of this mod: props.subagentsOf (a terminal),
+// props.copyMode (a terminal).
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { panes, spaces, terminals, props, run, theme, home, hc, exec, notify, nextCommand, openOverlay, closeOverlay } from "herdr";
@@ -19,6 +22,7 @@ const wait = (ms) => exec("sleep", [String(ms / 1000)]).catch(() => null);
 export default class FalconHood extends View {
   init(_props, cx) {
     if (props()?.subagentsOf) return this.initSubagents(cx);
+    if (props()?.copyMode) return this.initCopyMode(cx);
     this.hovered = false;
     this.session = null;
     this.context = null;
@@ -52,6 +56,7 @@ export default class FalconHood extends View {
     cx.spawn(async (cx) => {
       for (;;) {
         const command = String(await nextCommand()).split(".").pop();
+        if (command === "copy-mode" && this.me()?.focused && this.me().terminal) { this.openCopyMode(); continue; }
         if (!this.me()?.focused || !this.session) continue;
         if (command === "side" || command === "fork") cx.spawn(async () => this.copy(command));
         if (command === "send") this.askBrief();
@@ -63,6 +68,69 @@ export default class FalconHood extends View {
   }
 
   me() { return panes().find((p) => p.pane === props()?.pane); }
+
+  // Copy mode: a small popup takes the keyboard while the selection grows in the terminal.
+  openCopyMode() {
+    openOverlay({ mod: "falcon-header", kind: "popup", width: 300, height: 154, props: { copyMode: this.me().terminal } });
+  }
+
+  // The selection starts at the cursor; arrows (or hjkl) move its moving end. v starts again where
+  // that end is, w takes the word there, V the line. y or Enter copies, Esc or q leaves.
+  initCopyMode(cx) {
+    this.terminal = props().copyMode;
+    this.handle = cx.focus_handle();
+    this.handle.focus();
+    run("terminal.select", { terminal: this.terminal, at: "cursor", mode: "cell" });
+  }
+
+  copyKey(e, cx) {
+    const terminal = this.terminal;
+    const end = () => terminals().find((x) => x.address === terminal)?.selection?.end;
+    const moves = { left: "left", right: "right", up: "up", down: "down", h: "left", l: "right", k: "up", j: "down",
+      pageup: "page_up", pagedown: "page_down", home: "line_start", end: "line_end", "0": "line_start" };
+    const key = e.key_char ?? e.key;
+    const leave = () => { closeOverlay(props().overlay); };
+    let dir = moves[e.key] ?? null;
+    if (key === "$") dir = "line_end";
+    else if (key === "g") dir = "home";
+    else if (key === "G") dir = "end";
+    if (dir && !e.modifiers.control) {
+      run("terminal.adjust_selection", { terminal, direction: dir });
+    } else if (key === "v" || key === "w" || key === "V") {
+      const at = end() ?? "cursor";
+      run("terminal.select", { terminal, at, mode: key === "w" ? "word" : key === "V" ? "line" : "cell" });
+    } else if (key === "y" || e.key === "enter") {
+      run("terminal.copy");
+      run("terminal.clear_selection", { terminal });
+      notify({ title: "Copied", level: "success", timeout: 1500 });
+      leave();
+    } else if (e.key === "escape" || key === "q") {
+      run("terminal.clear_selection", { terminal });
+      leave();
+    } else return;
+    cx.stop_propagation();
+    cx.notify();
+  }
+
+  copyMode(t) {
+    const sel = terminals().find((x) => x.address === this.terminal)?.selection;
+    const rows = sel ? Math.abs(sel.end.row - sel.start.row) + 1 : 0;
+    const hint = (keys, what) => h_flex().gap(8).child(div().w(84).flex_none().font_family("JetBrains Mono").text_size(11).text_color(t.foreground).child(keys))
+      .child(div().text_size(11.5).text_color(t.dim).child(what));
+    return v_flex().id("copy-mode").track_focus(this.handle).size_full().p(10).gap(4).bg(t.popover)
+      .on_key_down((e, cx) => this.copyKey(e, cx))
+      .on_mouse_down("left", () => this.handle.focus())
+      .child(h_flex().gap(7).items_center().mb(2)
+        .child(svg(OWN("copy-mode")).size(14).text_color(t.accent))
+        .child(div().font_semibold().text_size(12.5).text_color(t.foreground).child("Copy mode"))
+        .child(div().flex_1())
+        .child(div().text_size(11).text_color(t.dim).child(sel ? `${rows} line${rows === 1 ? "" : "s"}` : "no selection")))
+      .child(hint("←↑↓→ hjkl", "move the end"))
+      .child(hint("0 $  g G", "line start, end; top, bottom"))
+      .child(hint("v  w  V", "start here: cell, word, line"))
+      .child(hint("y  Enter", "copy and leave"))
+      .child(hint("Esc  q", "leave"));
+  }
 
   // The sub-agents popup (the header's bot count, or the key falcon-header.subagents).
   openSubagents() {
@@ -229,6 +297,7 @@ export default class FalconHood extends View {
   render() {
     const t = theme();
     if (props()?.subagentsOf) return this.subagents(t);
+    if (props()?.copyMode) return this.copyMode(t);
     const me = this.me();
     if (!me) return div();
     const s = this.session;
@@ -270,6 +339,12 @@ export default class FalconHood extends View {
         .when(Boolean(md), (el) => el.child(this.tool(t, `header-md-${pane}`, OWN("popout"), "Open the full rendering in the browser",
           () => exec(`${home()}/.local/bin/herdr-md-browser`, [md]).catch(() => notify({ title: "Couldn't open the browser view", level: "error" })))))
         .when(Boolean(state), (el) => el.child(state))
+        // Scrolled up into the history: back to the end (Herdr reports only the move into history).
+        .when((me.scroll?.from_bottom ?? 0) > 0, (el) => el.child(h_flex().id(`header-bottom-${pane}`).flex_none().h(20).px(6).gap(4).items_center()
+          .rounded(5).cursor_pointer().bg(t.raised).text_size(11).text_color(t.muted).hover((x) => x.bg(t.hover).text_color(t.foreground))
+          .tooltip("Jump to the bottom").on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+          .on_click((_e, cx) => { cx.stop_propagation(); run("terminal.scroll", { to: "bottom", terminal: me.terminal }); })
+          .child(svg(OWN("to-bottom")).size(12).flex_none()).when(wide, (x) => x.child("Bottom"))))
         .when(tools && Boolean(s), (el) => el.child(sep())
           .when(Boolean(this.main()), (x) => x.child(this.tool(t, `header-send-${pane}`, OWN("send"), "Send a brief to the main conversation (Ctrl+Shift+M)", () => this.askBrief())))
           .child(this.tool(t, `header-move-${pane}`, OWN("move"), "Continue on another account", () => this.continueOn()))

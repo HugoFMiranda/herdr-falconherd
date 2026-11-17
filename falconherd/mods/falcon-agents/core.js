@@ -143,6 +143,37 @@ export function descendants(procs, pid) {
 // A Windows command line as argv (quotes group, as CommandLineToArgvW does for plain cases).
 export const splitCommandLine = (line) => [...(line ?? "").matchAll(/"([^"]*)"|(\S+)/g)].map((m) => m[1] ?? m[2]);
 
+// Windows has no /proc to see which log a Codex has open, so the log is matched by what it says of
+// itself: its first line (session_meta) names the conversation, its folder and when it began. That
+// line goes on with Codex's whole instructions, so only its start is read: fields by pattern.
+export function rolloutMeta(line) {
+  const at = (line ?? "").indexOf('"payload":{');
+  if (at < 0) return null;
+  const rest = line.slice(at);
+  const field = (k) => rest.match(new RegExp(`"${k}":"((?:[^"\\\\]|\\\\.)*)"`))?.[1];
+  const unescape = (s) => { try { return JSON.parse(`"${s}"`); } catch { return null; } };
+  const id = field("id");
+  if (!id) return null;
+  const began = Date.parse(field("timestamp") ?? "");
+  const cwd = field("cwd");
+  return { id, cwd: cwd === undefined ? null : unescape(cwd), startedMs: Number.isFinite(began) ? began : null };
+}
+
+const samePath = (a, b) => {
+  const norm = (p) => p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  return Boolean(a && b) && norm(a) === norm(b);
+};
+const STARTED_SLACK_MS = 5000; // the process's start and the log's own clock, a little apart
+
+// The log of a Codex that started at startedMs in cwd, from logs [{ path, mtimeMs, meta }]: of its
+// folder's logs written since it started, the newest one it began, else the newest it resumed.
+export function pickRollout(logs, { cwd, startedMs }) {
+  const since = startedMs - STARTED_SLACK_MS;
+  const here = logs.filter((l) => l.meta && samePath(l.meta.cwd, cwd) && l.mtimeMs >= since)
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return here.find((l) => (l.meta.startedMs ?? 0) >= since) ?? here[0] ?? null;
+}
+
 export const STALE_MS = 15 * 60 * 1000;
 
 const clamp = (n) => Math.min(100, Math.max(0, n));

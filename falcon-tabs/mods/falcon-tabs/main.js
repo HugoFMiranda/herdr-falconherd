@@ -9,7 +9,7 @@
 // Popups of this mod: props.away (the settled and snoozed), props.all (every tab of the space),
 // props.tabMenu ({ tab, space }).
 import { View, div, svg, image } from "gpui-kit";
-import { h_flex, v_flex } from "gpui-base";
+import { h_flex, v_flex, ScrollHandle } from "gpui-base";
 import { spaces, panes, run, shared, setShared, openOverlay, closeOverlay, props, theme, window, layout, settings, appHome, readTextFile, hc, exec, notify, keys, nextCommand } from "herdr";
 import { isPicture, accounts, sessionAccount, cleanTabName, shellTopic, SNOOZE_FOREVER, tabTitle, shortAgo, panelFor, TAB_NAME_AT, keyLabel } from "./core.js";
 import { sessionOf, terminalAccount, parse, loadAccounts, readOn, helper, machineBadge, titlesOn, recentPrompts } from "./session.js";
@@ -57,6 +57,8 @@ async function lookOf(pane) {
 
 export default class FalconPerch extends View {
   init(_props, cx) {
+    this.scroll = ScrollHandle.new(); // keeps the active tab in view (#802)
+    this.swipe = { acc: 0, steps: 0, at: 0, last: 0 };
     this.looks = new Map();   // terminal -> "icon|color" (empty in the popups: their rows show programs' icons)
     if (props()?.away || props()?.all || props()?.tabMenu) return;
     this.triedAt = {};       // tab -> when naming it was last tried
@@ -197,9 +199,7 @@ export default class FalconPerch extends View {
       const back = spaces().flatMap((s) => s.tabs).find((x) => x.id === this.previousTab);
       if (back) run("tab.select", { id: back.id });
     } else if ((command === "move-left" || command === "move-right") && tab) {
-      const at = tabs.findIndex((x) => x.id === tab.id) + 1; // 1 = first
-      const to = command === "move-left" ? at - 1 : at + 1;
-      if (to >= 1 && to <= tabs.length) run("tab.move", { id: tab.id, index: to });
+      run("tab.move", { id: tab.id, by: command === "move-left" ? -1 : 1 }); // wraps around the ends
     } else if (command === "files" || command === "changes") {
       const panel = findNode(layout(), "panel"), stack = findNode(layout(), "panel-body");
       if (!panel || !stack?.children?.some((c) => c.id === command)) return;
@@ -261,6 +261,23 @@ export default class FalconPerch extends View {
     if (tab.status === "blocked") return div().size(7).flex_none().rounded(4).bg(t.blocked);
     if (tab.status === "done") return svg(ICON("check")).size(12).flex_none().text_color(t.done);
     return null;
+  }
+
+  // One tab per wheel notch (Herdr's tabs mod, 0.1.16): a touchpad flick used to jump several tabs.
+  // A short swipe or one smoothed notch (about 20 px) switches one tab, a longer swipe a tab per
+  // 60 px, at most one every 100 ms.
+  wheel(e) {
+    if (e.delta_lines) { if (e.delta_lines.y) run(e.delta_lines.y > 0 ? "tab.prev" : "tab.next"); return; }
+    const s = this.swipe, now = Date.now();
+    if (e.touch_phase === "started" || now - s.at > 250 || e.delta.y * s.acc < 0) Object.assign(s, { acc: 0, steps: 0 });
+    s.at = now;
+    s.acc += e.delta.y;
+    const need = s.steps ? 60 : 20;
+    if (Math.abs(s.acc) < need || now - s.last < 100) return;
+    s.acc -= Math.sign(s.acc) * need;
+    s.steps++;
+    s.last = now;
+    run(e.delta.y > 0 ? "tab.prev" : "tab.next");
   }
 
   tab(t, space, shown, tab, i) {
@@ -335,6 +352,12 @@ export default class FalconPerch extends View {
     const space = spaces().find((s) => s.active);
     const all = tabsOf(space);
     const shown = all.filter((tab) => !tab.settled || tab.active); // settled ones live in the agents list
+    const active = shown.findIndex((tab) => tab.active);
+    if (shown[active]?.id !== this.selected || active !== this.selectedIndex) {
+      this.selected = shown[active]?.id;
+      this.selectedIndex = active;
+      if (active >= 0) this.scroll.scroll_to_item(active);
+    }
     const awayCount = all.length - shown.length;
     const stack = findNode(layout(), "panel-body");
     const panels = (stack?.children ?? []).map((c) => c.id).filter(Boolean);
@@ -356,13 +379,10 @@ export default class FalconPerch extends View {
       .child(svg(ICON(icon)).size(14));
     return h_flex().size_full().min_w(0).pr(8).pl(lights).gap(4).items_center().bg(t.chrome).border_b_1().border_color(t.border)
       .on_mouse_up("left", () => { this.pressed = null; })
-      .on_scroll_wheel((e) => {
-        if (Math.abs(e.delta.y) < 1 || Date.now() - (this.wheelAt ?? 0) < 120) return;
-        this.wheelAt = Date.now();
-        run(e.delta.y > 0 ? "tab.prev" : "tab.next");
-      })
+      .on_scroll_wheel((e) => this.wheel(e))
       .when(Boolean(space?.machine), (el) => el.child(machineBadge(t, space.machine)))
       .child(h_flex().id("tabs-tabs").flex_1().min_w(0).h_full().items_center().gap(3).overflow_x_scrollbar()
+        .track_scroll(this.scroll).on_size_change((_size, cx) => { if (active >= 0) { this.scroll.scroll_to_item(active); cx.notify(); } })
         .children(shown.map((tab, i) => this.tab(t, space, shown, tab, i))))
       .when(all.length > 5, (el) => el.child(chip("tabs-all", ICON("layers"), String(all.length), false,
         () => openOverlay({ mod: "falcon-tabs", kind: "popup", width: 300, height: Math.min(420, 31 * all.length + 34), props: { all: space.id } }))))

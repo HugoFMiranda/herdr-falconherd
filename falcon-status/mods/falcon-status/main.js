@@ -61,7 +61,10 @@ export default class StatusSession extends View {
       const key = s ? `${s.machine ?? ""}:${s.account}` : null; // an account's plan and probe, per machine
       if (s?.tool === "claude" && Date.now() - (this.plansAt[key] ?? 0) > PLAN_MS) {
         this.plansAt[key] = Date.now();
-        this.plans[key] = await claudePlan(s);
+        const plan = await claudePlan(s);
+        // A /login to another account: probe its usage now instead of showing the old one's.
+        if (key in this.plans && this.plans[key] !== plan) this.probed[key] = 0;
+        this.plans[key] = plan;
       }
       // Codex's plan name comes from its newest log; only needed for a Codex session.
       this.codex = s?.tool === "codex" ? await codexLatest(s.machine) : null;

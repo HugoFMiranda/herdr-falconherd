@@ -4,7 +4,7 @@
 import { svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { hc, exec, home, appHome, readTextFile, writeTextFile, openOverlay, panes, spaces, notify, window, run, terminals, shared } from "herdr";
-import { accounts, setAccounts, accountsFrom, setMachineLooks, titleSettings, promptsFrom, machineColor, PROFILE_SAVED, codexAccountOf, accountTitle, programAccount, switchTargets, modelKey, MODEL_CHOICES, keysFor, descendants, splitCommandLine, machineOf, fromStatusline, fromCodexTokenCount, newest, subagentsFrom, projectSlug, switchKind, switchArgv, loginShell } from "./core.js";
+import { accounts, setAccounts, accountsFrom, setMachineLooks, titleSettings, promptsFrom, machineColor, PROFILE_SAVED, codexAccountOf, accountTitle, programAccount, switchTargets, modelKey, MODEL_CHOICES, keysFor, descendants, splitCommandLine, machineOf, fromStatusline, fromCodexTokenCount, newest, subagentsFrom, projectSlug, switchKind, switchArgv, loginShell, rolloutMeta, pickRollout } from "./core.js";
 
 export const cacheRoot = () => `${home()}/.cache/herdr-session`;
 export const parse = (text) => { try { return text ? JSON.parse(text) : null; } catch { return null; } };
@@ -70,9 +70,10 @@ export const machineBadge = (t, machine, { label = true } = {}) => {
     .when(label, (el) => el.child(machine));
 };
 
-// Windows only: every process as { pid, ppid, name, cmd } (cmd for Claude and Codex), shared for a few seconds.
+// Windows only: every process as { pid, ppid, name, startedMs, cmd } (cmd for Claude and Codex,
+// startedMs for Codex), shared for a few seconds.
 const PROCS_MS = 3000;
-const PROCS_PS = "Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,Name,CommandLine | ForEach-Object { $c = if ($_.Name -in 'claude.exe', 'codex.exe') { $_.CommandLine } else { '' }; \"$($_.ProcessId)`t$($_.ParentProcessId)`t$($_.Name)`t$c\" }";
+const PROCS_PS = "Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,Name,CommandLine,CreationDate | ForEach-Object { $c = if ($_.Name -in 'claude.exe', 'codex.exe') { $_.CommandLine } else { '' }; $s = if ($_.Name -eq 'codex.exe' -and $_.CreationDate) { ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() } else { '' }; \"$($_.ProcessId)`t$($_.ParentProcessId)`t$($_.Name)`t$s`t$c\" }";
 let procs = { at: 0, list: null };
 let procsAsked = null; // the scan under way: everyone asking meanwhile waits for that one
 async function processTable() {
@@ -81,8 +82,8 @@ async function processTable() {
   procsAsked = (async () => {
     const r = await exec("powershell", ["-NoProfile", "-NonInteractive", "-Command", PROCS_PS]).catch(() => null);
     const list = (r?.stdout ?? "").split(/\r?\n/).filter(Boolean).map((line) => {
-      const [pid, ppid, name, cmd] = line.split("\t");
-      return { pid: Number(pid), ppid: Number(ppid), name, cmd };
+      const [pid, ppid, name, started, ...cmd] = line.split("\t");
+      return { pid: Number(pid), ppid: Number(ppid), name, startedMs: Number(started) || null, cmd: cmd.join("\t") };
     });
     procs = { at: Date.now(), list };
     return list;
@@ -93,6 +94,33 @@ async function processTable() {
 // Windows: shell pid -> the Claude under it ({ pid, argv }), or { at } when there was none then.
 const claudeUnder = new Map();
 const NONE_MS = 15000;
+// Windows: shell pid -> the Codex under it ({ pid, startedMs, at }, pid null for none), asked again
+// after NONE_MS (the process table is a PowerShell each time).
+const codexUnder = new Map();
+
+// Windows: the Codex under a shell and the log it writes. Codex's log can't be seen open here (no
+// /proc), so it's the log in the shell's folder that this Codex began, or resumed, since it started.
+async function codexOnWindows(base, shellPid, cwd, h) {
+  let known = codexUnder.get(shellPid);
+  if (!known || Date.now() - known.at > NONE_MS) {
+    const p = descendants(await processTable(), shellPid).find((x) => x.name === "codex.exe");
+    known = { pid: p?.pid ?? null, startedMs: p?.startedMs ?? null, at: Date.now() };
+    codexUnder.set(shellPid, known);
+  }
+  if (!known.pid || !known.startedMs || !cwd) return null;
+  const root = h.replace(/\\/g, "/");
+  for (const a of accounts(null, "codex")) {
+    // Each newest log: its path, when it was last written and the start of its first line.
+    const out = await sh('ls -t "$1"/sessions/*/*/*/rollout-*.jsonl 2>/dev/null | head -12 | while IFS= read -r f; do printf "%s\\t%s\\t" "$f" "$(stat -c %Y "$f")"; head -c 2000 "$f" | head -n 1; echo; done', null, [`${root}/${a.dir}`]);
+    const logs = out.split("\n").filter(Boolean).map((line) => {
+      const [path, mtime, ...first] = line.split("\t");
+      return { path, mtimeMs: Number(mtime) * 1000, meta: rolloutMeta(first.join("\t")) };
+    });
+    const log = pickRollout(logs, { cwd, startedMs: known.startedMs });
+    if (log) return { ...base, pid: known.pid, tool: "codex", account: a.id, sessionId: log.meta.id, name: null, rollout: log.path };
+  }
+  return null;
+}
 
 // The Claude session whose process is pid, on any of the machine's accounts, or null.
 async function claudeSessionAt(pid, machine, h) {
@@ -140,16 +168,18 @@ export async function sessionOf(terminal) {
       const s = await claudeSessionAt(known.pid, null, h);
       if (s) return { ...base, pid: known.pid, argv: known.argv, tool: "claude", ...s };
       claudeUnder.delete(fg.pid);
-    } else if (known && Date.now() - known.at < NONE_MS) return null;
-    for (const p of descendants(await processTable(), fg.pid).filter((x) => x.name === "claude.exe")) {
-      const s = await claudeSessionAt(p.pid, null, h);
-      if (s) {
-        claudeUnder.set(fg.pid, { pid: p.pid, argv: splitCommandLine(p.cmd) });
-        return { ...base, pid: p.pid, argv: splitCommandLine(p.cmd), tool: "claude", ...s };
-      }
     }
-    claudeUnder.set(fg.pid, { at: Date.now() });
-    return null; // Codex's log is found through /proc, which Windows doesn't have
+    if (!(known?.at && Date.now() - known.at < NONE_MS)) {
+      for (const p of descendants(await processTable(), fg.pid).filter((x) => x.name === "claude.exe")) {
+        const s = await claudeSessionAt(p.pid, null, h);
+        if (s) {
+          claudeUnder.set(fg.pid, { pid: p.pid, argv: splitCommandLine(p.cmd) });
+          return { ...base, pid: p.pid, argv: splitCommandLine(p.cmd), tool: "claude", ...s };
+        }
+      }
+      claudeUnder.set(fg.pid, { at: Date.now() });
+    }
+    return codexOnWindows(base, fg.pid, t.cwd ?? fg.cwd, h);
   }
   if (fg.name === "codex" || /(^|\/)codex$/.test(fg.argv?.[0] ?? "")) {
     // The rollout log the codex process (or its child) has open.
@@ -192,8 +222,11 @@ export async function readingsFor(s) {
     };
   }
   const line = (await sh(`tail -n 400 "$1" | grep '"token_count"' | grep '"used_percent"' | tail -1`, m, [s.rollout])).trim();
-  const at = Number((await sh('stat -c %Y "$1" 2>/dev/null || stat -f %m "$1"', m, [s.rollout])).trim()) * 1000 || Date.now();
   const ev = parse(line);
+  // When the reading was made: its own time (Windows doesn't move a file's time while Codex holds it
+  // open), else the log's last write.
+  const at = Date.parse(ev?.timestamp ?? "") ||
+    Number((await sh('stat -c %Y "$1" 2>/dev/null || stat -f %m "$1"', m, [s.rollout])).trim()) * 1000 || Date.now();
   const model = (await sh(`grep -o '"model":"[^"]*"' "$1" | tail -1`, m, [s.rollout])).trim().replace(/^"model":"|"$/g, "") || null;
   return { ...fromCodexTokenCount(ev?.payload ?? ev, at), title: null, model: model ? { id: model, name: model } : null };
 }

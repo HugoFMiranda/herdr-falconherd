@@ -16,6 +16,8 @@ const OWN = (name) => `mods/falcon-changes/${name}.svg`;
 const HERDR = (name) => `mods/workspace-chrome/${name}.svg`;
 // Reads write nothing under .git (no index refresh, lock or fsmonitor cookie): the folder watch
 // would see it, and each refresh would start the next.
+// Tabs to spaces (stops of 4): text draws a tab as nothing, so a diff lost its indentation.
+const untab = (text) => text.replace(/[^\t]*\t/g, (s) => s.slice(0, -1).padEnd((s.length - 1) - (s.length - 1) % 4 + 4));
 const READ = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "diff.autoRefreshIndex=false"];
 const MAX_FILES = 1000, MAX_LINES = 600;
 const statusColor = (t, s) => (s === "A" ? t.ansi2 : s === "D" || s === "U" ? t.ansi1 : t.ansi3);
@@ -217,7 +219,7 @@ export default class FalconChanges extends View {
       .when(kind === "+", (e) => e.bg(`${t.ansi2}18`)).when(kind === "-", (e) => e.bg(`${t.ansi1}18`))
       .child(div().w(32).flex_none().text_right().text_color(t.dim).child(number === undefined ? "" : String(number)))
       .child(div().w(10).flex_none().text_color(kind === "+" ? t.ansi2 : kind === "-" ? t.ansi1 : t.dim).child(kind === " " ? "" : kind))
-      .child(div().flex_1().min_w(0).truncate().child(text));
+      .child(div().flex_1().min_w(0).truncate().child(untab(text)));
   }
 
   // depth: its place in the tree (null: the flat list, with its folder dimmed beside the name).

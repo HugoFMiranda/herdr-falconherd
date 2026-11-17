@@ -55,7 +55,7 @@ export default class FalconRoost extends View {
     this.list = [];           // hc's machines
     this.loaded = new Set();  // machines (keys) whose folders file was read
     this.machineBusy = new Map(); // name -> what its menu asked that's under way ("Reconnecting…")
-    this.folded = new Set(JSON.parse(localStorage.getItem("folded-machines") ?? "[]"));
+    this.folded = new Set((() => { try { const v = JSON.parse(localStorage.getItem("folded-machines") ?? "[]"); return Array.isArray(v) ? v : []; } catch { return []; } })());
     this.drag = null;         // { id, machine, from } a space being dragged
     this.over = null;         // what it's over: { kind: "space" | "folder" | "out", id }
     this.filter = InputState.new({ placeholder: "Filter spaces" });
@@ -296,7 +296,7 @@ export default class FalconRoost extends View {
       .on_mouse_move((_e, cx) => { if (dragging && !target) { this.over = { kind: "space", id: s.id }; cx.notify(); } })
       .on_mouse_up("left", (_e, cx) => { if (this.drag?.id === s.id && !this.over) { this.drag = null; run("space.select", { id: s.id }); cx.notify(); } else this.endDrag(cx); })
       .child(avatar)
-      .child(div().flex_none().max_w(150).truncate().text_color(t.foreground).child(name))
+      .child(div().flex_shrink(1).min_w(40).truncate().text_color(t.foreground).child(name))
       .child(div().flex_1().min_w(0).truncate().text_right().text_size(11.5).text_color(t.dim).child(gitTail(g, name, s.worktree)))
       .when(c.working > 0, (el) => el.child(h_flex().flex_none().gap(2).items_center().text_size(10.5).text_color(t.working)
         .child(svg(HERDR("spinner")).size(10).spin(900)).when(c.working > 1, (x) => x.child(String(c.working)))))

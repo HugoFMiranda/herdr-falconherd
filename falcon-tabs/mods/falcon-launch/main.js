@@ -72,10 +72,11 @@ export default class FalconLaunch extends View {
 
   close() { closeOverlay(props().overlay); }
 
-  start(agent) {
+  // Ctrl (or middle) click, or Ctrl+Enter: the tab opens behind, and you stay where you are.
+  start(agent, behind = false) {
     if (!agent?.installed) return;
     this.close();
-    run("tab.new", { name: agent.name, space: this.space?.id, argv: agent.run });
+    run("tab.new", { name: agent.name, space: this.space?.id, argv: agent.run, ...(behind ? { focus: false } : {}) });
   }
 
   move(by, cx) {
@@ -94,7 +95,8 @@ export default class FalconLaunch extends View {
     const on = i === this.chosen;
     return h_flex().id(`fl-${a.key}`).h(ROW).px(10).gap(10).items_center().rounded(8).flex_none()
       .bg(on ? t.selected : t.popover).when(a.installed, (el) => el.cursor_pointer().hover((s) => s.bg(t.selected)))
-      .on_click(() => this.start(a))
+      .on_click((e) => this.start(a, e.modifiers.control))
+      .on_mouse_up("middle", () => this.start(a, true))
       .child(div().when(!a.installed, (el) => el.opacity(0.4)).child(this.icon(t, a, 16)))
       .child(v_flex().flex_1().min_w(0)
         .child(div().truncate().text_size(13).text_color(a.installed ? t.foreground : t.dim).child(a.name))
@@ -104,7 +106,7 @@ export default class FalconLaunch extends View {
 
   action(t, id, icon, label, hint, onClick, enabled = true) {
     return h_flex().id(id).h(30).px(10).gap(10).items_center().rounded(7).flex_none()
-      .text_color(enabled ? t.foreground : t.dim).when(enabled, (el) => el.cursor_pointer().hover((s) => s.bg(t.selected)).on_click(() => { this.close(); onClick(); }))
+      .text_color(enabled ? t.foreground : t.dim).when(enabled, (el) => el.cursor_pointer().hover((s) => s.bg(t.selected)).on_click((e) => { this.close(); onClick(e.modifiers.control); }))
       .child(svg(icon).size(14).flex_none().text_color(t.muted)).child(div().flex_1().text_size(12.5).child(label))
       .child(div().text_size(11).text_color(t.dim).child(hint));
   }
@@ -122,7 +124,8 @@ export default class FalconLaunch extends View {
     const height = 12 + 36 + 9 + 5 * 30 + 6 * 4 + Math.min(9, Math.max(1, list.length)) * (ROW + 1);
     return v_flex().id("falcon-launch").w_full().h(height).bg(t.popover).p(6).gap(4)
       .on_key_down((e, cx) => {
-        if (e.key === "down") { this.move(1, cx); cx.stop_propagation(); }
+        if (e.keystroke === "ctrl-enter") { this.start(this.matches()[this.chosen], true); cx.stop_propagation(); }
+        else if (e.key === "down") { this.move(1, cx); cx.stop_propagation(); }
         else if (e.key === "up") { this.move(-1, cx); cx.stop_propagation(); }
         else if (e.key === "escape") { this.close(); cx.stop_propagation(); }
       })
@@ -133,7 +136,7 @@ export default class FalconLaunch extends View {
         .children(list.map((a, i) => this.agentRow(t, a, i, searching ? 0 : installed.indexOf(a) + 1 <= 9 ? installed.indexOf(a) + 1 : 0)))
         .when(list.length === 0, (el) => el.child(div().px(10).py(8).text_size(12).text_color(t.dim).child(empty))))
       .child(div().h(1).mx(4).my(2).bg(t.border))
-      .child(this.action(t, "fl-terminal", "icons/shell.svg", "Terminal", shortcut("tab.new"), () => run("tab.new", { space: space?.id })))
+      .child(this.action(t, "fl-terminal", "icons/shell.svg", "Terminal", shortcut("tab.new"), (behind) => run("tab.new", { space: space?.id, ...(behind ? { focus: false } : {}) })))
       .child(this.action(t, "fl-space", "mods/workspace-chrome/plus.svg", "New space", shortcut("space.new"), () => run("space.new")))
       .child(this.action(t, "fl-worktree", "mods/workspace-chrome/branch.svg", "New worktree…", "", () => worktree("new"), Boolean(space)))
       .child(this.action(t, "fl-worktree-open", "mods/workspace-chrome/git-branch.svg", "Open worktree…", "", () => worktree("open"), Boolean(space)))

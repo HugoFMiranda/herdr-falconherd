@@ -40,7 +40,9 @@ const sortOf = () => SORTS.find((s) => s.id === shared("agents.sort")) ?? SORTS[
 const spaceTone = (t, space) => { const c = (shared("space.colors") ?? {})[space] ?? "ansi6"; return c.startsWith("#") ? c : TONES[c] ?? t[c]; };
 // A sub-agent terminal's state as a row shows it: error is blocked, done is idle (its parent's done is the news).
 const kidState = (k, listed) => { const s = listed.get(k.address) ?? k.status; return s === "error" ? "blocked" : s === "done" ? "idle" : s; };
-const plain = (s) => (s ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
+// Drops a status glyph or spinner before a title, and Codex's blinking "[ ! ] " mark; keeps a
+// leading bracket or quote ("[web] login"), as Herdr's agents mod does since 0.1.16.
+const plain = (s) => (s ?? "").replace(/^[^\p{L}\p{N}\p{Ps}\p{Pi}]+/u, "").replace(/^\[ [!.] \] /, "").trim();
 
 // The first agent pane of each tab (else its focused terminal, else its first).
 function leads(list) {
@@ -56,7 +58,9 @@ function leads(list) {
 function tabLine(tab, lead) {
   const program = lead?.program?.name;
   const live = plain(lead?.title);
-  const telling = live && live !== program && !/^[~/]|^[A-Za-z]:\\/.test(live) && !live.includes("@") && live.toLowerCase() !== lead?.program?.key;
+  // plain() would strip a path's leading ~ or /: test the title with only its status glyph gone.
+  const path = /^[~/]|^[A-Za-z]:\\/.test((lead?.title ?? "").replace(/^[^\p{L}\p{N}~/]+/u, ""));
+  const telling = live && live !== lead?.terminal && live !== program && !path && !live.includes("@") && live.toLowerCase() !== lead?.program?.key;
   return (tab.name === program || !tab.named) && telling ? live : tab.name;
 }
 

@@ -51,6 +51,7 @@
     "ctrl-space f": "falcon-tabs.files",
     "ctrl-space c": "falcon-tabs.changes",
     "ctrl-space b": "falcon-header.subagents",
+    "ctrl-space v": "falcon-header.copy-mode",
     "ctrl-space w": "falcon-header.switch",
     "ctrl-space p": "falcon-agents.pin",
     "f11": "window.maximize"

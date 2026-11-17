@@ -208,6 +208,7 @@ export default class FalconFiles extends View {
       const open = this.open.has(path), mark = this.marks[`${slash(this.root)}/${path}`];
       out.push(h_flex().id(`ff-${path}`).h(28).flex_none().pl(8 + depth * 16).pr(6).gap(7).items_center().rounded(7).cursor_pointer()
         .hover((s) => s.bg(t.hover)).on_hover((h, cx) => { this.hot = h ? path : this.hot === path ? null : this.hot; cx.notify(); })
+        .drag_paths([this.full(path)], { on: this.on ?? null }) // dropped on a terminal, Herdr types the path
         .on_click((_e, cx) => (entry.dir && !flat ? this.toggle(path, cx) : entry.dir ? null : this.show(path, cx)))
         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.rowMenu(path, entry.dir); })
         .child(entry.dir && !flat ? svg(ICON(`chevron-${open ? "down" : "right"}`)).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
