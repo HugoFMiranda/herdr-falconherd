@@ -261,12 +261,12 @@ export default class FalconHood extends View {
   }
 
   chip(t, acc) {
-    const name = this.session.name;
+    const name = this.session.terminal;
     const copied = Date.now() < this.copiedUntil;
-    const width = Math.min(170, Math.ceil(Math.max(name.length, 6) * 6.7)); // mono: the chip never resizes
+    const width = Math.min(170, Math.ceil(name.length * 6.7)); // mono: the chip never resizes
     return h_flex().id(`header-chip-${props().pane}`).flex_none().h(20).px(7).gap(6).items_center().rounded(10)
       .border_1().border_color(`${acc.color}55`).bg(`${acc.color}1a`).cursor_pointer().font_family("JetBrains Mono").text_size(11)
-      .tooltip("Copy the session name").on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .tooltip("Copy the terminal address").on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_click((_e, cx) => {
         cx.stop_propagation();
         cx.write_to_clipboard(name);
@@ -275,7 +275,8 @@ export default class FalconHood extends View {
         cx.timer.after(1600, (cx) => cx.notify());
       })
       .when(this.width >= 460, (el) => el.child(div().text_color(acc.color).child(acc.label)))
-      .child(div().w(width).flex_none().truncate().text_color(copied ? t.done : t.foreground).child(copied ? "copied" : name))
+      .child(div().w(width).flex_none().truncate().text_color(copied ? t.done : t.foreground).child(name))
+      .when(copied, (el) => el.child(svg("mods/workspace-chrome/check.svg").size(11).text_color(t.done)))
       .when(this.brief?.state === "waiting", (el) => el.child(div().text_color(t.dim).child("· brief waiting")));
   }
 
@@ -329,7 +330,7 @@ export default class FalconHood extends View {
             .text_color(t.muted).child(svg(HERDR("git-branch")).size(11).flex_none()).child(div().truncate().font_family("JetBrains Mono").text_size(10.5).child(me.branch))))
           .when(wide && Boolean(origin), (el) => el.child(div().flex_shrink(0).max_w(220).truncate().text_size(11).text_color(acc?.color ?? t.dim).child(origin))))
         .when(Boolean(machineOf(me.terminal)), (el) => el.child(machineBadge(t, machineOf(me.terminal), { label: wide })))
-        .when(Boolean(acc && s?.name), (el) => el.child(this.chip(t, acc)))
+        .when(Boolean(acc && s?.terminal), (el) => el.child(this.chip(t, acc)))
         .when(roomy && Boolean(this.context), (el) => el.child(this.meter(t)))
         .when(this.subs.total > 0, (el) => el.child(h_flex().id(`header-subs-${pane}`).flex_none().h(20).px(5).gap(4).items_center().rounded(5).cursor_pointer()
           .text_size(11).text_color(this.subs.running ? t.working : t.dim).hover((x) => x.bg(t.hover).text_color(t.foreground))

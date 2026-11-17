@@ -412,8 +412,8 @@ export default class FalconFlock extends View {
       .when(subs.length > 0, (el) => el.child(div().id(`agents-fold-${a.address}`).flex_none().p(2).rounded(4).cursor_pointer().text_color(t.dim)
         .hover((x) => x.bg(t.hover)).on_click((_e, cx) => { cx.stop_propagation(); this.folded.has(a.address) ? this.folded.delete(a.address) : this.folded.add(a.address); cx.notify(); })
         .child(svg(ICON(`herdr:chevron-${this.folded.has(a.address) ? "right" : "down"}`)).size(11))))
-      .when(hot && Boolean(s?.name), (el) => el.child(this.tool(t, `agents-copy-${a.address}`, copied ? "herdr:check" : "copy", `Copy session name: ${s.name}`, (cx) => {
-        cx.write_to_clipboard(s.name); this.copied = { address: a.address, until: Date.now() + 1500 }; cx.timer.after(1600, (cx) => cx.notify());
+      .when(hot && Boolean(s?.name), (el) => el.child(this.tool(t, `agents-copy-${a.address}`, copied ? "herdr:check" : "copy", `Copy the terminal address: ${a.address}`, (cx) => {
+        cx.write_to_clipboard(a.address); this.copied = { address: a.address, until: Date.now() + 1500 }; cx.timer.after(1600, (cx) => cx.notify());
       })))
       .when(hot, (el) => el.child(this.tool(t, `agents-pin-${a.address}`, a.pinned ? "herdr:pin-off" : "herdr:pin", a.pinned ? "Unpin" : "Pin to the top", () => run("terminal.pin", { terminal: a.address, pinned: !a.pinned }))))
       .when(hot && Boolean(until), (el) => el.child(this.tool(t, `agents-wake-${a.address}`, "wake", "Wake it now", () => this.wakeUp(a))))
